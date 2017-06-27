@@ -6,7 +6,7 @@
 #include <string>                   // C++ string class
 #include <sstream>                  // class for parsing strings
 #include <TString.h>                // ROOT string class
-#include "MitEwk13TeV/Utils/CSample.hh"  // helper class to handle samples
+#include "TauLeptonFlavor/Utils/CSample.hh"  // helper class to handle samples
 
 void confParse(const TString    conf,      // input conf file
                vector<TString>  &snamev,   // vector to store output of sample names
