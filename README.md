@@ -11,6 +11,6 @@ To run the selection:
 For MC, copy scripts from /Scripts/Tau3MuMC and rename them to select3Mu.C
 cd Selection
 ./runSelectionGEN.sh
-For Normalization, copy scriptz from /Scripts/Ds2MuPiData and rename them to selectDsPhiPi.X
+For Normalization, copy scripts from /Scripts/Ds2MuPiData and rename them to selectDsPhiPi.C
 cd Selection
 ./runSelection.sh
