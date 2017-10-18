@@ -9,6 +9,7 @@
 #include <cassert>
 		   
 Bool_t passMuonID(const baconhep::TMuon *muon, const Double_t rho=0);
+Bool_t passPFMuonID(const baconhep::TMuon *muon, const Double_t rho=0);
 Bool_t passAntiMuonID(const baconhep::TMuon *muon, const Double_t rho=0);
 Bool_t passMuonLooseID(const baconhep::TMuon *muon, const Double_t rho=0);
 
@@ -49,6 +50,26 @@ Bool_t passMuonID(const baconhep::TMuon *muon, const Double_t rho)
 
   return kTRUE;
 }
+
+//--------------------------------------------------------------------------------------------------
+Bool_t passPFMuonID(const baconhep::TMuon *muon, const Double_t rho)
+{
+  if(muon->nTkLayers  < 6)            return kFALSE;
+  if(muon->nPixHits   < 1)            return kFALSE;
+  if(fabs(muon->d0)   > 0.2)          return kFALSE;
+  if(fabs(muon->dz)   > 0.5)          return kFALSE;
+  if(muon->muNchi2    > 10)           return kFALSE;
+  if(muon->nMatchStn  < 2)            return kFALSE;
+  if(muon->nValidHits < 1)            return kFALSE;
+  //if(!(muon->typeBits & baconhep::EMuType::kGlobal)) return kFALSE;
+  if(!(muon->typeBits & baconhep::EMuType::kPFMuon)) return kFALSE;
+  
+  Double_t iso = muon->chHadIso + TMath::Max(muon->neuHadIso + muon->gammaIso - 0.5*(muon->puIso),Double_t(0));
+  if(iso > 0.15*(muon->pt)) return kFALSE;
+
+  return kTRUE;
+}
+
 
 //--------------------------------------------------------------------------------------------------
 Bool_t passAntiMuonID(const baconhep::TMuon *muon, const Double_t rho)
@@ -211,7 +232,7 @@ Bool_t passEleLooseID(const baconhep::TElectron *electron, const TLorentzVector 
 
 //--------------------------------------------------------------------------------------------------
 Bool_t isMuonTrigger(baconhep::TTrigger triggerMenu, TriggerBits hltBits) {
-  return triggerMenu.pass("HLT_IsoMu20_v*",hltBits);
+  return triggerMenu.pass("HLT_DoubleMu3_Trk_Tau3mu_v*",hltBits);
 }
 
 Bool_t isMuonTriggerNoIso(baconhep::TTrigger triggerMenu, TriggerBits hltBits) {
@@ -219,8 +240,15 @@ Bool_t isMuonTriggerNoIso(baconhep::TTrigger triggerMenu, TriggerBits hltBits) {
 }
 
 Bool_t isMuonTriggerObj(baconhep::TTrigger triggerMenu, TriggerObjects hltMatchBits, Bool_t isL1) {
-  if (isL1) return triggerMenu.passObj("HLT_IsoMu20_v*","hltL1sL1SingleMu16",hltMatchBits);
-  else return triggerMenu.passObj("HLT_IsoMu20_v*","hltL3crIsoL1sMu16L1f0L2f10QL3f20QL3trkIsoFiltered0p09",hltMatchBits);
+  Bool_t MuonTriObj = kFALSE;
+  if(isL1)
+    MuonTriObj = triggerMenu.passObj("HLT_IsoMu20_v*","hltL1sL1SingleMu16",hltMatchBits);
+  else
+    //MuonTriObj = triggerMenu.passObj("HLT_DoubleMu3_Trk_Tau3mu_v*","hltL2fL1sL1DoubleMuorTripleMuL1f0L2PreFiltered0",hltMatchBits);
+    MuonTriObj = (triggerMenu.passObj("HLT_DoubleMu3_Trk_Tau3mu_v*","hltDoubleMu3TrkTau3muL3Filtered",hltMatchBits) ||
+                  triggerMenu.passObj("HLT_DoubleMu3_Trk_Tau3mu_v*","hltL1fL1sL1DoubleMuorTripleMuL1Filtered0",hltMatchBits) ||
+    		  triggerMenu.passObj("HLT_DoubleMu3_Trk_Tau3mu_v*","hltL2fL1sL1DoubleMuorTripleMuL1f0L2PreFiltered0",hltMatchBits));
+  return MuonTriObj;
 }
 
 Bool_t isMuonTriggerObjNoIso(baconhep::TTrigger triggerMenu, TriggerObjects hltMatchBits, Bool_t isL1) {

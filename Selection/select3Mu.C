@@ -20,12 +20,16 @@
 #include <iomanip>                  // functions to format standard I/O
 #include <fstream>                  // functions for file I/O
 #include "TLorentzVector.h"         // 4-vector class
+#include <THStack.h>
+#include <TStyle.h>
+#include <TCanvas.h>
+#include <TGraph.h>
+#include <TLegend.h>
+#include <TF1.h>
 #include "TH1D.h"
 #include "TRandom.h"
-
 #include "ConfParse.hh"             // input conf file parser
 #include "../Utils/CSample.hh"      // helper class to handle samples
-
 // define structures to read in ntuple
 #include "BaconAna/DataFormats/interface/BaconAnaDefs.hh"
 #include "BaconAna/DataFormats/interface/TEventInfo.hh"
@@ -34,45 +38,62 @@
 #include "BaconAna/DataFormats/interface/TMuon.hh"
 #include "BaconAna/DataFormats/interface/TVertex.hh"
 #include "BaconAna/Utils/interface/TTrigger.hh"
-
 // lumi section selection with JSON files
 #include "BaconAna/Utils/interface/RunLumiRangeMap.hh"
-
 #include "../Utils/LeptonIDCuts.hh" // helper functions for lepton ID selection
 #include "../Utils/MyTools.hh"      // various helper functions
 #endif
 
-//=== MAIN MACRO ================================================================================================= 
-
 void select3Mu(const TString conf="samples.conf", // input file
-              const TString outputDir=".",  // output directory
-	      const Bool_t  doScaleCorr=0   // apply energy scale corrections?
-) {
+	       const TString outputDir=".",  // output directory
+	       const Bool_t  doScaleCorr=0   // apply energy scale corrections?
+	       ) {
   gBenchmark->Start("select3Mu");
 
   //--------------------------------------------------------------------------------------------------------------
   // Settings 
   //============================================================================================================== 
-
-  const Double_t PT_CUT    = 6;
+  const Bool_t isGENLevel = kFALSE;
+  const Double_t PT_CUT_LEAD    = 2.5;
+  const Double_t PT_CUT_SUB = 1;
   const Double_t ETA_CUT   = 2.4;
   const Double_t MUON_MASS = 0.105658369;
-
-  const Double_t VETO_PT   = 10;
-  const Double_t VETO_ETA  = 2.4;
-
+  
   const Int_t BOSON_ID  = 24;
   const Int_t LEPTON_ID = 13;
 
+  TH1F* NUM = new TH1F("NUM","Number of global muon",10,0,10);
+  TH1F* MC = new TH1F("MC truth","MC truth",100,0,10);
+  TH1F* R1 = new TH1F("DeltaR","DeltaR",100,0,1);
+  TH1F* R2 = new TH1F("DeltaR1","DeltaR",100,0,1);
+  TH1F* R3 = new TH1F("DeltaR2","DeltaR",100,0,1);
+
+  TH1F* hist0 = new TH1F("tau -> 3 muon 0","RECO invariant mass",100,0,10);
+  TH1F* hist1 = new TH1F("tau -> 3 muon 1","invariant mass",100,0,10);
+  TH1F* hist2 = new TH1F("tau -> 3 muon 2","RECO pT",75,0,15);
+  TH1F* hist3 = new TH1F("tau -> 3 muon 3","RECO Eta",50,-3,3);
+  TH1F* hist4 = new TH1F("tau -> 3 muon 4","RECO Phi",25,-3.5,3.5);
+  TH1F* hist5 = new TH1F("tau -> 3 muon 5","RECO pT",75,0,15);
+  TH1F* hist6 = new TH1F("tau -> 3 muon 6","RECO Eta",50,-3,3);
+  TH1F* hist7 = new TH1F("tau -> 3 muon 7","RECO Phi",25,-3.5,3.5);
+  TH1F* hist8 = new TH1F("tau -> 3 muon 8","RECO pT",75,0,15);
+  TH1F* hist9 = new TH1F("tau -> 3 muon 9","RECO Eta",50,-3,3);
+  TH1F* hist10 = new TH1F("tau -> 3 muon 10","RECO Phi",25,-3.5,3.5);
+  TH1F* hist11 = new TH1F("tau -> 3 muon 11","pT",25,0,10);
+  TH1F* hist12 = new TH1F("tau -> 3 muon 12","Eta",50,-3,3);
+  TH1F* hist13 = new TH1F("tau -> 3 muon 13","Phi",25,-3.5,3.5);
+  TH1F* hist14 = new TH1F("tau -> 3 muon 14","pT",25,0,10);
+  TH1F* hist15 = new TH1F("tau -> 3 muon 15","Eta",50,-3,3);
+  TH1F* hist16 = new TH1F("tau -> 3 muon 16","Phi",25,-3.5,3.5);
+  TH1F* hist17 = new TH1F("tau -> 3 muon 17","pT",25,0,10);
+  TH1F* hist18 = new TH1F("tau -> 3 muon 18","Eta",50,-3,3);
+  TH1F* hist19 = new TH1F("tau -> 3 muon 19","Phi",25,-3.5,3.5);
+  UInt_t count1=0, count2=0, count3=0, count4=0, count5=0, lessmuon=0, lowpt = 0, multidecay = 0;
+  gStyle->SetOptStat(111111);
+
+  
   // load trigger menu
   const baconhep::TTrigger triggerMenu("../../BaconAna/DataFormats/data/HLT_50nsGRun");
-
-  // load pileup reweighting file
-  TFile *f_rw = TFile::Open("../Utils/data/puWeights_76x.root", "read");
-
-  TH1D *h_rw = (TH1D*) f_rw->Get("puWeights");
-  TH1D *h_rw_up = (TH1D*) f_rw->Get("puWeightsUp");
-  TH1D *h_rw_down = (TH1D*) f_rw->Get("puWeightsDown");
 
   //--------------------------------------------------------------------------------------------------------------
   // Main analysis code 
@@ -81,42 +102,9 @@ void select3Mu(const TString conf="samples.conf", // input file
   vector<TString>  snamev;      // sample name (for output files)  
   vector<CSample*> samplev;     // data/MC samples
 
-  //
   // parse .conf file
-  //
   confParse(conf, snamev, samplev);
   const Bool_t hasData = (samplev[0]->fnamev.size()>0);
-
-  // Create output directory
-  gSystem->mkdir(outputDir,kTRUE);
-  const TString ntupDir = outputDir + TString("/ntuples");
-  gSystem->mkdir(ntupDir,kTRUE);
-  
-  //
-  // Declare output ntuple variables
-  //
-  UInt_t  runNum, lumiSec, evtNum;
-  UInt_t  npv, npu;
-  UInt_t  id_1, id_2;
-  Double_t x_1, x_2, xPDF_1, xPDF_2;
-  Double_t scalePDF, weightPDF;
-  TLorentzVector *genV=0, *genLep=0;
-  Float_t genVPt, genVPhi, genVy, genVMass;
-  Float_t genLepPt, genLepPhi;
-  Float_t scale1fb, scale1fbUp, scale1fbDown, puWeight,puWeightUp,puWeightDown;
-  Float_t met, metPhi, sumEt, mt, u1, u2;
-  Float_t tkMet, tkMetPhi, tkSumEt, tkMt, tkU1, tkU2;
-  Float_t mvaMet, mvaMetPhi, mvaSumEt, mvaMt, mvaU1, mvaU2;
-  Float_t puppiMet, puppiMetPhi, puppiSumEt, puppiMt, puppiU1, puppiU2;
-  Int_t   q;
-  TLorentzVector *lep=0;
-  Int_t lepID;
-  ///// muon specific /////
-  Float_t trkIso, emIso, hadIso;
-  Float_t pfChIso, pfGamIso, pfNeuIso, pfCombIso;
-  Float_t d0, dz;
-  Float_t muNchi2;
-  UInt_t nPixHits, nTkLayers, nValidHits, nMatch, typeBits;
   
   // Data structures to store info from TTrees
   baconhep::TEventInfo *info  = new baconhep::TEventInfo();
@@ -127,116 +115,25 @@ void select3Mu(const TString conf="samples.conf", // input file
   
   TFile *infile=0;
   TTree *eventTree=0;
-  
-  //
+
   // loop over samples
-  //  
   for(UInt_t isam=0; isam<samplev.size(); isam++) {
-    
-    // Assume data sample is first sample in .conf file
-    // If sample is empty (i.e. contains no ntuple files), skip to next sample
-    Bool_t isData=kFALSE;
-    if(isam==0 && !hasData) continue;
-    else if (isam==0) isData=kTRUE;
 
-    // Assume signal sample is given name "wm" -- flag to store GEN W kinematics
+    // Assume signal sample is given name "dstau" -- flag to store GEN Ds kinematics
     Bool_t isSignal = (snamev[isam].CompareTo("dstau",TString::kIgnoreCase)==0);
-    // flag to reject W->mnu events when selecting wrong flavor background events 
     CSample* samp = samplev[isam];
-
-    //
-    // Set up output ntuple
-    //
-    TString outfilename = ntupDir + TString("/") + snamev[isam] + TString("_select.root");
-    if(isam!=0 && !doScaleCorr) outfilename = ntupDir + TString("/") + snamev[isam] + TString("_select.raw.root");
-    cout << outfilename << endl;
-    TFile *outFile = new TFile(outfilename,"RECREATE"); 
-    TTree *outTree = new TTree("Events","Events");
-    outTree->Branch("runNum",     &runNum,     "runNum/i");      // event run number
-    outTree->Branch("lumiSec",    &lumiSec,    "lumiSec/i");     // event lumi section
-    outTree->Branch("evtNum",     &evtNum,     "evtNum/i");      // event number
-    outTree->Branch("npv",        &npv,        "npv/i");         // number of primary vertices
-    outTree->Branch("npu",        &npu,        "npu/i");         // number of in-time PU events (MC)
-    outTree->Branch("id_1",       &id_1,       "id_1/i");        // PDF info -- parton ID for parton 1
-    outTree->Branch("id_2",       &id_2,       "id_2/i");        // PDF info -- parton ID for parton 2
-    outTree->Branch("x_1",        &x_1,        "x_1/d");         // PDF info -- x for parton 1
-    outTree->Branch("x_2",        &x_2,        "x_2/d");         // PDF info -- x for parton 2
-    outTree->Branch("xPDF_1",     &xPDF_1,     "xPDF_1/d");      // PDF info -- x*F for parton 1
-    outTree->Branch("xPDF_2",     &xPDF_2,     "xPDF_2/d");      // PDF info -- x*F for parton 2
-    outTree->Branch("scalePDF",   &scalePDF,   "scalePDF/d");    // PDF info -- energy scale of parton interaction
-    outTree->Branch("weightPDF",  &weightPDF,  "weightPDF/d");   // PDF info -- PDF weight
-    outTree->Branch("genV",       "TLorentzVector", &genV);      // GEN boson 4-vector (signal MC)
-    outTree->Branch("genLep",     "TLorentzVector", &genLep);    // GEN lepton 4-vector (signal MC)
-    outTree->Branch("genVPt",     &genVPt,     "genVPt/F");      // GEN boson pT (signal MC)
-    outTree->Branch("genVPhi",    &genVPhi,    "genVPhi/F");     // GEN boson phi (signal MC)
-    outTree->Branch("genVy",      &genVy,      "genVy/F");       // GEN boson rapidity (signal MC)
-    outTree->Branch("genVMass",   &genVMass,   "genVMass/F");    // GEN boson mass (signal MC)
-    outTree->Branch("genLepPt",   &genLepPt,   "genLepPt/F");    // GEN lepton pT (signal MC)
-    outTree->Branch("genLepPhi",  &genLepPhi,  "genLepPhi/F");   // GEN lepton phi (signal MC)
-    outTree->Branch("scale1fb",   &scale1fb,   "scale1fb/F");    // event weight per 1/fb (MC)
-    outTree->Branch("scale1fbUp",   &scale1fbUp,   "scale1fbUp/F");    // event weight per 1/fb (MC)
-    outTree->Branch("scale1fbDown",   &scale1fbDown,   "scale1fbDown/F");    // event weight per 1/fb (MC)
-    outTree->Branch("met",        &met,        "met/F");         // MET
-    outTree->Branch("metPhi",     &metPhi,     "metPhi/F");      // phi(MET)
-    outTree->Branch("sumEt",      &sumEt,      "sumEt/F");       // Sum ET
-    outTree->Branch("mt",         &mt,         "mt/F");          // transverse mass
-    outTree->Branch("u1",         &u1,         "u1/F");          // parallel component of recoil
-    outTree->Branch("u2",         &u2,         "u2/F");          // perpendicular component of recoil
-    outTree->Branch("tkMet",      &tkMet,      "tkMet/F");       // MET (track MET)
-    outTree->Branch("tkMetPhi",   &tkMetPhi,   "tkMetPhi/F");    // phi(MET) (track MET)
-    outTree->Branch("tkSumEt",    &tkSumEt,    "tkSumEt/F");     // Sum ET (track MET)
-    outTree->Branch("tkMt",       &tkMt,       "tkMt/F");        // transverse mass (track MET)
-    outTree->Branch("tkU1",       &tkU1,       "tkU1/F");        // parallel component of recoil (track MET)
-    outTree->Branch("tkU2",       &tkU2,       "tkU2/F");        // perpendicular component of recoil (track MET)
-    outTree->Branch("mvaMet",     &mvaMet,     "mvaMet/F");      // MVA MET
-    outTree->Branch("mvaMetPhi",  &mvaMetPhi,  "mvaMetPhi/F");   // phi(MVA MET)
-    outTree->Branch("mvaSumEt",   &mvaSumEt,   "mvaSumEt/F");    // Sum ET (mva MET)
-    outTree->Branch("mvaMt",      &mvaMt,      "mvaMt/F");      // transverse mass (MVA MET)
-    outTree->Branch("mvaU1",      &mvaU1,      "mvaU1/F");       // parallel component of recoil (mva MET)
-    outTree->Branch("mvaU2",      &mvaU2,      "mvaU2/F");       // perpendicular component of recoil (mva MET)
-    outTree->Branch("puppiMet",    &puppiMet,   "puppiMet/F");      // Puppi MET
-    outTree->Branch("puppiMetPhi", &puppiMetPhi,"puppiMetPhi/F");   // phi(Puppi MET)
-    outTree->Branch("puppiSumEt",  &puppiSumEt, "puppiSumEt/F");    // Sum ET (Puppi MET)
-    outTree->Branch("puppiU1",     &puppiU1,    "puppiU1/F");       // parallel component of recoil (Puppi MET)
-    outTree->Branch("puppiU2",     &puppiU2,    "puppiU2/F");       // perpendicular component of recoil (Puppi MET)
-    outTree->Branch("q",          &q,          "q/I");           // lepton charge
-    outTree->Branch("lep",        "TLorentzVector", &lep);       // lepton 4-vector
-    outTree->Branch("lepID",      &lepID,      "lepID/I");       // lepton PDG ID
-    ///// muon specific /////
-    outTree->Branch("trkIso",     &trkIso,     "trkIso/F");       // track isolation of lepton
-    outTree->Branch("emIso",      &emIso,      "emIso/F");        // ECAL isolation of lepton
-    outTree->Branch("hadIso",     &hadIso,     "hadIso/F");       // HCAL isolation of lepton
-    outTree->Branch("pfChIso",    &pfChIso,    "pfChIso/F");      // PF charged hadron isolation of lepton
-    outTree->Branch("pfGamIso",   &pfGamIso,   "pfGamIso/F");     // PF photon isolation of lepton
-    outTree->Branch("pfNeuIso",   &pfNeuIso,   "pfNeuIso/F");     // PF neutral hadron isolation of lepton
-    outTree->Branch("pfCombIso",  &pfCombIso,  "pfCombIso/F");    // PF combined isolation of lepton
-    outTree->Branch("d0",         &d0,         "d0/F");           // transverse impact parameter of lepton
-    outTree->Branch("dz",         &dz,         "dz/F");           // longitudinal impact parameter of lepton
-    outTree->Branch("muNchi2",    &muNchi2,    "muNchi2/F");      // muon fit normalized chi^2 of lepton
-    outTree->Branch("nPixHits",   &nPixHits,   "nPixHits/i");	  // number of pixel hits of muon
-    outTree->Branch("nTkLayers",  &nTkLayers,  "nTkLayers/i");	  // number of tracker layers of muon
-    outTree->Branch("nMatch",     &nMatch,     "nMatch/i");	  // number of matched segments of muon	 
-    outTree->Branch("nValidHits", &nValidHits, "nValidHits/i");   // number of valid muon hits of muon 
-    outTree->Branch("typeBits",   &typeBits,   "typeBits/i");     // number of valid muon hits of muon 
-    //
+    
+    cout<<"begin loop over files"<<endl;
     // loop through files
-    //
     const UInt_t nfiles = samp->fnamev.size();
     for(UInt_t ifile=0; ifile<nfiles; ifile++) {  
       
       // Read input file and get the TTrees
       cout << "Processing " << samp->fnamev[ifile] << " [xsec = " << samp->xsecv[ifile] << " pb] ... "; cout.flush();
-
       infile = TFile::Open(samp->fnamev[ifile]); 
       assert(infile);
 
-      Bool_t hasJSON = kFALSE;
-      baconhep::RunLumiRangeMap rlrm;
-      if(samp->jsonv[ifile].CompareTo("NONE")!=0) { 
-	hasJSON = kTRUE;
-	rlrm.addJSONFile(samp->jsonv[ifile].Data()); 
-      }
-
+      // Access Event Tree
       eventTree = (TTree*)infile->Get("Events");
       assert(eventTree);  
       eventTree->SetBranchAddress("Info", &info);    TBranch *infoBr = eventTree->GetBranch("Info");
@@ -244,305 +141,361 @@ void select3Mu(const TString conf="samples.conf", // input file
       eventTree->SetBranchAddress("PV",   &vertexArr); TBranch *vertexBr = eventTree->GetBranch("PV");
       Bool_t hasGen = eventTree->GetBranchStatus("GenEvtInfo");
       TBranch *genBr=0, *genPartBr=0;
-      if(hasGen) {
-        eventTree->SetBranchAddress("GenEvtInfo", &gen); genBr = eventTree->GetBranch("GenEvtInfo");
-	eventTree->SetBranchAddress("GenParticle",&genPartArr); genPartBr = eventTree->GetBranch("GenParticle");
-      }
+      eventTree->SetBranchAddress("GenEvtInfo", &gen); genBr = eventTree->GetBranch("GenEvtInfo");
+      eventTree->SetBranchAddress("GenParticle",&genPartArr); genPartBr = eventTree->GetBranch("GenParticle");
 
-      // Compute MC event weight per 1/fb
-      const Double_t xsec = samp->xsecv[ifile];
-      Double_t totalWeight=0;
-      Double_t totalWeightUp=0;
-      Double_t totalWeightDown=0;
-
-//       if (hasGen) {
-// 	TH1D *hall = new TH1D("hall", "", 1,0,1);
-// 	eventTree->Draw("0.5>>hall", "GenEvtInfo->weight");
-// 	totalWeight=hall->Integral();
-// 	delete hall;
-// 	hall=0;
-//       }
-
-      if (hasGen) {
-    for(UInt_t ientry=0; ientry<eventTree->GetEntries(); ientry++) {
-      infoBr->GetEntry(ientry);
-      genBr->GetEntry(ientry);
-      puWeight = h_rw->GetBinContent(h_rw->FindBin(info->nPUmean));
-      puWeightUp = h_rw_up->GetBinContent(h_rw_up->FindBin(info->nPUmean));
-      puWeightDown = h_rw_down->GetBinContent(h_rw_down->FindBin(info->nPUmean));
-      totalWeight+=gen->weight*puWeight; // mine has pu and gen separated
-      totalWeightUp+=gen->weight*puWeightUp;
-      totalWeightDown+=gen->weight*puWeightDown;
-    }
-      }
-      else if (not isData){
-    for(UInt_t ientry=0; ientry<eventTree->GetEntries(); ientry++) {
-      puWeight = h_rw->GetBinContent(h_rw->FindBin(info->nPUmean));
-      puWeightUp = h_rw_up->GetBinContent(h_rw_up->FindBin(info->nPUmean));
-      puWeightDown = h_rw_down->GetBinContent(h_rw_down->FindBin(info->nPUmean));
-      totalWeight+= 1.0*puWeight;
-      totalWeightUp+= 1.0*puWeightUp;
-      totalWeightDown+= 1.0*puWeightDown;
-    }
-
-      }
-
-      //
-      // loop over events
-      //
-      Double_t nsel=0, nselvar=0;
+      //Loop over events
       for(UInt_t ientry=0; ientry<eventTree->GetEntries(); ientry++) {
+      //for(UInt_t ientry=0; ientry<5000; ientry++) {
         infoBr->GetEntry(ientry);
-
-        if(ientry%1000000==0) cout << "Processing event " << ientry << ". " << (double)ientry/(double)eventTree->GetEntries()*100 << " percent done with this file." << endl;
-	Double_t weight=1;
-	Double_t weightUp=1;
-	Double_t weightDown=1;
-        if(xsec>0 && totalWeight>0) weight = xsec/totalWeight;
-	if(xsec>0 && totalWeightUp>0) weightUp = xsec/totalWeightUp;
-	if(xsec>0 && totalWeightDown>0) weightDown = xsec/totalWeightDown;
-	if(hasGen) {
-	  genPartArr->Clear();
-	  genBr->GetEntry(ientry);
-          genPartBr->GetEntry(ientry);
-	  puWeight = h_rw->GetBinContent(h_rw->FindBin(info->nPUmean));
-	  puWeightUp = h_rw_up->GetBinContent(h_rw_up->FindBin(info->nPUmean));
-	  puWeightDown = h_rw_down->GetBinContent(h_rw_down->FindBin(info->nPUmean));
-	  weight*=gen->weight*puWeight;
-	  weightUp*=gen->weight*puWeightUp;
-	  weightDown*=gen->weight*puWeightDown;
-	}
+	
+        if(ientry%20000==0) cout << "Processing event " << ientry << ". " << (double)ientry/(double)eventTree->GetEntries()*100 << " percent done with this file." << endl;
    
-
-	// check for certified lumi (if applicable)
-        baconhep::RunLumiRangeMap::RunLumiPairType rl(info->runNum, info->lumiSec);      
-        if(hasJSON && !rlrm.hasRunLumi(rl)) continue;  
-
-        // trigger requirement               
-        if (!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
-      
-        // good vertex requirement
-        if(!(info->hasGoodPV)) continue;
-           
-        //
-	// SELECTION PROCEDURE:
-	//  (1) Look for 1 good muon matched to trigger
-	//  (2) Reject event if another muon is present passing looser cuts
-	//
+        if(!isGENLevel){
+	  // check for certified lumi (if applicable)
+	  baconhep::RunLumiRangeMap::RunLumiPairType rl(info->runNum, info->lumiSec);      
+	  //if(hasJSON && !rlrm.hasRunLumi(rl)) continue;  
+	  
+	  // trigger requirement               
+	  //if (!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
+	  
+	  // good vertex requirement
+	  //if(!(info->hasGoodPV)) continue;
+	}
+	
+	//////////////////////MATCHING/////////////////////////////////	
+	genPartArr->Clear();
+	genPartBr->GetEntry(ientry);
 	muonArr->Clear();
-        muonBr->GetEntry(ientry);
+	muonBr->GetEntry(ientry);
 
-	Int_t nLooseLep=0;
-	const baconhep::TMuon *goodMuon=0;
-	Bool_t passSel=kFALSE;
-
-        for(Int_t i=0; i<muonArr->GetEntriesFast(); i++) {
-          const baconhep::TMuon *mu = (baconhep::TMuon*)((*muonArr)[i]);
-
-          // apply scale and resolution corrections to MC
-          Double_t mupt_corr = mu->pt;
-
-          if(fabs(mu->eta) > VETO_ETA) continue; // loose lepton |eta| cut
-          if(mupt_corr     < VETO_PT)  continue; // loose lepton pT cut
-          if(passMuonLooseID(mu)) nLooseLep++;   // loose lepton selection
-          //if(nLooseLep>1) {  // extra lepton veto
-          //  passSel=kFALSE;
-          //  break;
-	  // }
-          
-          if(fabs(mu->eta) > ETA_CUT)         continue;  // lepton |eta| cut
-	  if(mupt_corr     < PT_CUT)          continue;  // lepton pT cut   
-          if(!passMuonID(mu))                 continue;  // lepton selection
-          if(!isMuonTriggerObj(triggerMenu, mu->hltMatchBits, kFALSE)) continue;
-
-	  passSel=kTRUE;
-	  goodMuon = mu;
+	//Store GEN level tau muon
+	vector<baconhep::TGenParticle*> genmuonArr;
+	baconhep::TGenParticle* sortArr[3];
+	for(int i=0; i<genPartArr->GetEntries(); i++){
+	  baconhep::TGenParticle *genpar = (baconhep::TGenParticle*)((*genPartArr)[i]);
+	  if(genpar->pdgId != 13 && genpar->pdgId != -13) continue;
+	  if(genpar->status != 1) continue;
+	  Int_t parentid1=dynamic_cast<baconhep::TGenParticle *>(genPartArr->At(genpar->parent>-1 ? genpar->parent : 0))->pdgId;
+	  if(parentid1 != 15 && parentid1 != -15) continue;
+	  genmuonArr.push_back(genpar);
 	}
 
-	if(passSel) {
-	  /******** We have a W candidate! HURRAY! ********/
-	  nsel+=weight;
-          nselvar+=weight*weight;
-	  
-          // apply scale and resolution corrections to MC
-          Double_t goodMuonpt_corr = goodMuon->pt;
+	//Only study events contain single decay 229041
+	if(genmuonArr.size() > 3) continue;
+	count1++;
 
-	  TLorentzVector vLep; 
-	  vLep.SetPtEtaPhiM(goodMuonpt_corr, goodMuon->eta, goodMuon->phi, MUON_MASS); 
-	  
-	  //
-	  // Fill tree
-	  //
-	  runNum    = info->runNum;
-	  lumiSec   = info->lumiSec;
-	  evtNum    = info->evtNum;
-	  
-	  vertexArr->Clear();
-	  vertexBr->GetEntry(ientry);
-
-	  npv       = vertexArr->GetEntries();
-	  npu	    = info->nPUmean;
-	  genV      = new TLorentzVector(0,0,0,0);
-	  genLep    = new TLorentzVector(0,0,0,0);
-	  genVPt    = -999;
-	  genVPhi   = -999;
-	  genVy     = -999;
-	  genVMass  = -999;
-	  genLepPt  = -999;
-	  genLepPhi = -999;
-	  u1        = -999;
-	  u2        = -999;
-	  tkU1      = -999;
-          tkU2      = -999;
-	  mvaU1     = -999;
-          mvaU2     = -999;
-          id_1      = -999;
-          id_2      = -999;
-          x_1       = -999;
-          x_2       = -999;
-          xPDF_1    = -999;
-          xPDF_2    = -999;
-          scalePDF  = -999;
-          weightPDF = -999;
-
-	  if(isSignal && hasGen) {
-            Int_t glepq1=-99;
-            Int_t glepq2=-99;
-	    TLorentzVector *gvec=new TLorentzVector(0,0,0,0);
-            TLorentzVector *glep1=new TLorentzVector(0,0,0,0);
-            TLorentzVector *glep2=new TLorentzVector(0,0,0,0);
-	    toolbox::fillGen(genPartArr, BOSON_ID, gvec, glep1, glep2,&glepq1,&glepq2,1);
-	    
-            if (gvec && glep1) {
-	      genV      = new TLorentzVector(0,0,0,0);
-	      genV->SetPtEtaPhiM(gvec->Pt(),gvec->Eta(),gvec->Phi(),gvec->M());
-	      genLep    = new TLorentzVector(0,0,0,0);
-	      genLep->SetPtEtaPhiM(glep1->Pt(),glep1->Eta(),glep1->Phi(),glep1->M());
-              genVPt    = gvec->Pt();
-              genVPhi   = gvec->Phi();
-              genVy     = gvec->Rapidity();
-              genVMass  = gvec->M();
-              genLepPt  = glep1->Pt();
-              genLepPhi = glep1->Phi();
-	      
-              TVector2 vWPt((genVPt)*cos(genVPhi),(genVPt)*sin(genVPhi));
-              TVector2 vLepPt(vLep.Px(),vLep.Py());
-
-              TVector2 vMet((info->pfMETC)*cos(info->pfMETCphi), (info->pfMETC)*sin(info->pfMETCphi));
-              TVector2 vU = -1.0*(vMet+vLepPt);
-              u1 = ((vWPt.Px())*(vU.Px()) + (vWPt.Py())*(vU.Py()))/(genVPt);  // u1 = (pT . u)/|pT|
-              u2 = ((vWPt.Px())*(vU.Py()) - (vWPt.Py())*(vU.Px()))/(genVPt);  // u2 = (pT x u)/|pT|
-
-              TVector2 vTkMet((info->trkMET)*cos(info->trkMETphi), (info->trkMET)*sin(info->trkMETphi));
-              TVector2 vTkU = -1.0*(vTkMet+vLepPt);
-              tkU1 = ((vWPt.Px())*(vTkU.Px()) + (vWPt.Py())*(vTkU.Py()))/(genVPt);  // u1 = (pT . u)/|pT|
-              tkU2 = ((vWPt.Px())*(vTkU.Py()) - (vWPt.Py())*(vTkU.Px()))/(genVPt);  // u2 = (pT x u)/|pT|
-
-              TVector2 vMvaMet((info->mvaMET)*cos(info->mvaMETphi), (info->mvaMET)*sin(info->mvaMETphi));
-              TVector2 vMvaU = -1.0*(vMvaMet+vLepPt);
-              mvaU1 = ((vWPt.Px())*(vMvaU.Px()) + (vWPt.Py())*(vMvaU.Py()))/(genVPt);  // u1 = (pT . u)/|pT|
-              mvaU2 = ((vWPt.Px())*(vMvaU.Py()) - (vWPt.Py())*(vMvaU.Px()))/(genVPt);  // u2 = (pT x u)/|pT|
-              
-              TVector2 vPuppiMet((info->puppET)*cos(info->puppETphi), (info->puppET)*sin(info->puppETphi));
-              TVector2 vPuppiU = -1.0*(vPuppiMet+vLepPt);
-              puppiU1 = ((vWPt.Px())*(vPuppiU.Px()) + (vWPt.Py())*(vPuppiU.Py()))/(genVPt);  // u1 = (pT . u)/|pT|
-              puppiU2 = ((vWPt.Px())*(vPuppiU.Py()) - (vWPt.Py())*(vPuppiU.Px()))/(genVPt);  // u2 = (pT x u)/|pT|
-	      
-            }
-            id_1      = gen->id_1;
-            id_2      = gen->id_2;
-            x_1       = gen->x_1;
-            x_2       = gen->x_2;
-            xPDF_1    = gen->xPDF_1;
-            xPDF_2    = gen->xPDF_2;
-            scalePDF  = gen->scalePDF;
-            weightPDF = gen->weight;
-
-	    delete gvec;
-            delete glep1;
-            delete glep2;
-            gvec=0; glep1=0; glep2=0;
+	//Sort muon array
+	Double_t maxpt=0, submaxpt=0, subsubpt=0;
+	for(int l=0; l<3; l++){
+	  if(genmuonArr[l]->pt >= maxpt){
+	    sortArr[2] = sortArr[1];
+	    sortArr[1] = sortArr[0];
+	    sortArr[0] = genmuonArr[l];
+	    subsubpt = submaxpt;
+	    submaxpt = maxpt;
+	    maxpt = genmuonArr[l]->pt;	  
 	  }
-	  scale1fb = weight;
-          scale1fbUp = weightUp;
-          scale1fbDown = weightDown;
-	  met	   = info->pfMETC;
-	  metPhi   = info->pfMETCphi;
-	  sumEt    = 0;
-	  mt       = sqrt( 2.0 * (vLep.Pt()) * (info->pfMETC) * (1.0-cos(toolbox::deltaPhi(vLep.Phi(),info->pfMETCphi))) );
-	  tkMet    = info->trkMET;
-	  tkMetPhi = info->trkMETphi;
-	  tkSumEt  = 0;
-	  tkMt     = sqrt( 2.0 * (vLep.Pt()) * (info->trkMET) * (1.0-cos(toolbox::deltaPhi(vLep.Phi(),info->trkMETphi))) );
-	  mvaMet   = info->mvaMET;
-	  mvaMetPhi = info->mvaMETphi;
-	  mvaSumEt  = 0;
-	  mvaMt     = sqrt( 2.0 * (vLep.Pt()) * (info->mvaMET) * (1.0-cos(toolbox::deltaPhi(vLep.Phi(),info->mvaMETphi))) );
-          puppiMet = info->puppET;
-          puppiMetPhi = info->puppETphi;
-	  puppiSumEt  = 0;
-	  puppiMt     = sqrt( 2.0 * (vLep.Pt()) * (info->puppET) * (1.0-cos(toolbox::deltaPhi(vLep.Phi(),info->puppETphi))) );
-	  q        = goodMuon->q;
-	  lep      = &vLep;
-	  
-	  ///// muon specific /////
-	  trkIso     = goodMuon->trkIso;
-	  emIso      = goodMuon->ecalIso;
-	  hadIso     = goodMuon->hcalIso;
-	  pfChIso    = goodMuon->chHadIso;
-	  pfGamIso   = goodMuon->gammaIso;
-	  pfNeuIso   = goodMuon->neuHadIso;
-	  pfCombIso  = goodMuon->chHadIso + TMath::Max(goodMuon->neuHadIso + goodMuon->gammaIso -
-						   0.5*(goodMuon->puIso),Double_t(0));
-	  d0         = goodMuon->d0;
-	  dz         = goodMuon->dz;
-	  muNchi2    = goodMuon->muNchi2;
-	  nPixHits   = goodMuon->nPixHits;
-	  nTkLayers  = goodMuon->nTkLayers;
-	  nMatch     = goodMuon->nMatchStn;
-	  nValidHits = goodMuon->nValidHits;
-	  typeBits   = goodMuon->typeBits;
-	  outTree->Fill();
-	  delete genV;
-	  delete genLep;
-	  genV=0, genLep=0, lep=0;
-        }
-      }
+	  else if(genmuonArr[l]->pt < maxpt && genmuonArr[l]->pt >= submaxpt){
+	    sortArr[2] = sortArr[1];
+	    sortArr[1] = genmuonArr[l];
+	    subsubpt = submaxpt;
+	    submaxpt = genmuonArr[l]->pt;
+	  }
+	  else{
+	    subsubpt = genmuonArr[l]->pt;
+	    sortArr[2] = genmuonArr[l];
+	  }
+	}
+
+	if(ientry <20) cout<<maxpt<<" "<<submaxpt<<" "<<subsubpt<<endl;
+
+	Bool_t pass = kTRUE;
+	if((genmuonArr[0]->eta < 2 || genmuonArr[0]->eta > 5) ||
+	   (genmuonArr[1]->eta < 2 || genmuonArr[1]->eta > 5) ||
+	   (genmuonArr[2]->eta < 2 || genmuonArr[2]->eta > 5) ||
+	   maxpt < 0.3 ||
+	   submaxpt < 0.3 ||
+	   subsubpt < 0.3) pass = kFALSE;
+	if(pass)
+	  count3++;
+	   
+	
+      }//end of event loop
       delete infile;
       infile=0, eventTree=0;    
-
-      cout << nsel  << " +/- " << sqrt(nselvar);
-      if(isam!=0) cout << " per 1/pb";
-      cout << endl;
     }
-    outFile->Write();
-    outFile->Close();
   }
-  delete h_rw;
-  delete h_rw_up;
-  delete h_rw_down;
-  delete f_rw;
   delete info;
   delete gen;
   delete genPartArr;
   delete muonArr;
   delete vertexArr;
-    
+  
   //--------------------------------------------------------------------------------------------------------------
   // Output
   //==============================================================================================================
-   
   cout << "*" << endl;
   cout << "* SUMMARY" << endl;
   cout << "*--------------------------------------------------" << endl;
   cout << " tau -> mu mu mu" << endl;
-  cout << "  pT > " << PT_CUT << endl;
+  cout << "  pT > " << PT_CUT_LEAD << endl;
   cout << "  |eta| < " << ETA_CUT << endl;
   cout << endl;
   
   cout << endl;
   cout << "  <> Output saved in " << outputDir << "/" << endl;    
-  cout << endl;  
-      
-  gBenchmark->Show("select3Mu"); 
+  cout << endl;
+
+  //Draw Graph
+  //THStack *all = new THStack("tau -> 3 muons","invariant mass");
+  TCanvas *c0 = new TCanvas("c0","invariant mass",1200,900);
+  TAxis *xaxis = hist0->GetXaxis();
+  TAxis *yaxis = hist0->GetYaxis();
+
+  xaxis->SetTitle("Invariant mass (GeV)");
+  yaxis->SetTitle("Entries / 0.1 GeV");
+  yaxis->SetTitleOffset(1.2);
+  yaxis->SetRangeUser(0.5,40000);
+  c0->cd();
+  
+
+  hist0->SetFillColor(5);
+  hist0->SetFillStyle(0);
+  //hist1->SetFillColor(7);
+  //hist3->SetFillColor(7);
+  //hist4->SetFillColor(8);
+
+
+  hist0->Draw();
+  //hist1->Draw("SAME");
+  
+  // all->Add(hist1);
+  //all->Add(hist2);
+  //all->Add(hist3);
+  //all->Add(hist4);
+  //c0->cd();
+  c0->SetLogy();
+  /*
+    all->Draw();
+    TAxis *xaxis = all->GetXaxis();
+    TAxis *yaxis = all->GetYaxis();
+    xaxis->SetTitle("Invariant mass (GeV)");
+    yaxis->SetTitle("Entries");
+    yaxis->SetTitleOffset(1.2);
+    all->SetMinimum(8.);
+    all->SetMaximum(120000.);
+  */
+  TF1 *f1 = new TF1("m1","gaus",1.5,2);
+  TF1 *f2 = new TF1("m2","gaus",0,5);
+  TF1 *total = new TF1("mstotal","gaus(0)+gaus(3)",0,5);
+  Double_t par[6]={50,1.5,0.1,5,2.5,2};
+  hist0->Fit(f1,"R0");
+  //hist2->Fit(f2,"R0+");
+  //f1->GetParameters(&par[0]);
+  //f2->GetParameters(&par[3]);
+  total->SetParameters(par);
+  hist0->Fit(total,"R0+");
+  total->SetLineColor(2);
+  total->SetLineWidth(2);
+  //total->Draw("SAME");
+  //f1->SetLineColor(3);
+  //f1->Draw("SAME");
+
+  auto legend = new TLegend(0.5,0.7,0.7,0.8);
+  //legend->AddEntry(hist1,"3 muons with opposite signs","f");
+  legend->AddEntry(hist0,"3 global muons with opposite signs","f");
+  legend->Draw();
+  
+
+  c0->Print("invariant mass.png");
+  cout<<count1<<" "<<count2<<" "<<count3<<" "<<count4<<" "<<count5<<" "<<lessmuon<<" "<<multidecay<<" "<<lowpt<<endl;
+
+  TCanvas *c1 = new TCanvas("1","muon pT",1200,900);
+  xaxis = hist2->GetXaxis();
+  yaxis = hist2->GetYaxis();
+
+  xaxis->SetTitle("pT (GeV)");
+  yaxis->SetTitle("Entries / 0.2 GeV");
+  yaxis->SetTitleOffset(1.5);
+  yaxis->SetRangeUser(0.5,45000);
+  c1->cd();
+  c1->SetLogy();
+
+  hist2->SetLineColor(2);
+  hist5->SetLineColor(6);
+  hist8->SetLineColor(4);
+  hist2->SetFillStyle(0);
+  hist5->SetFillStyle(0);
+  hist8->SetFillStyle(0);
+  //hist11->SetLineColor(2);
+  //hist14->SetLineColor(6);
+  //hist17->SetLineColor(4);
+  //hist11->SetLineStyle(2);
+  //hist14->SetLineStyle(2);
+  //hist17->SetLineStyle(2);
+
+  hist2->Draw();
+  hist5->Draw("SAME");
+  hist8->Draw("SAME");
+  //hist11->Draw("SAME");
+  //hist14->Draw("SAME");
+  //hist17->Draw("SAME");
+
+  legend = new TLegend(0.35,0.75,0.6,0.85);
+  legend->AddEntry(hist2,"3 global muons with opposite signs, lead","f");
+  legend->AddEntry(hist5,"3 global muons with opposite signs, sublead","f");
+  legend->AddEntry(hist8,"3 global muons with opposite signs, third","f");
+  //legend->AddEntry(hist11,"2 muons 1 track with same signs, lead","f");
+  //legend->AddEntry(hist14,"2 muons 1 track with same signs, sublead","f");
+  //legend->AddEntry(hist17,"2 muons 1 track with same signs, track","f");
+  legend->Draw();
+
+  c1->Print("pt.png");
+
+  TCanvas *c2 = new TCanvas("2","muon eta",1200,900);
+  xaxis = hist3->GetXaxis();
+  yaxis = hist3->GetYaxis();
+
+  xaxis->SetTitle("eta");
+  yaxis->SetTitle("Entries");
+  yaxis->SetTitleOffset(1.2);
+  yaxis->SetRangeUser(0,250);
+  c2->cd();
+
+  hist3->SetLineColor(2);
+  hist6->SetLineColor(6);
+  hist9->SetLineColor(4);
+  hist3->SetFillStyle(0);
+  hist6->SetFillStyle(0);
+  hist9->SetFillStyle(0);
+  //hist12->SetLineColor(2);
+  //hist15->SetLineColor(6);
+  //hist18->SetLineColor(4);
+  //hist12->SetLineStyle(2);
+  //hist15->SetLineStyle(2);
+  //hist18->SetLineStyle(2);
+
+  hist3->Draw();
+  hist6->Draw("SAME");
+  hist9->Draw("SAME");
+  //hist12->Draw("SAME");
+  //hist15->Draw("SAME");
+  //hist18->Draw("SAME");
+
+  legend = new TLegend(0.15,0.75,0.4,0.85);
+  legend->AddEntry(hist3,"3 global muons with opposite signs, lead","f");
+  legend->AddEntry(hist6,"3 global muons with opposite signs, sublead","f");
+  legend->AddEntry(hist9,"3 global muons with opposite signs, third","f");
+  //legend->AddEntry(hist12,"2 muons 1 track with same signs, lead","f");
+  //legend->AddEntry(hist15,"2 muons 1 track with same signs, sublead","f");
+  //legend->AddEntry(hist18,"2 muons 1 track with same signs, track","f");
+  legend->Draw();
+
+  c2->Print("eta.png");
+
+  TCanvas *c3 = new TCanvas("3","muon phi",1200,900);
+  xaxis = hist4->GetXaxis();
+  yaxis = hist4->GetYaxis();
+
+  xaxis->SetTitle("phi");
+  yaxis->SetTitle("Entries / 0.28 rad");
+  yaxis->SetTitleOffset(1.3);
+  yaxis->SetRangeUser(0,250);
+  c3->cd();
+
+  hist4->SetLineColor(2);
+  hist7->SetLineColor(6);
+  hist10->SetLineColor(4);
+  //hist13->SetLineColor(2);
+  //hist16->SetLineColor(6);
+  //hist19->SetLineColor(4);
+  //hist13->SetLineStyle(2);
+  //hist16->SetLineStyle(2);
+  //hist19->SetLineStyle(2);
+
+  hist4->Draw();
+  hist7->Draw("SAME");
+  hist10->Draw("SAME");
+  //hist13->Draw("SAME");
+  //hist16->Draw("SAME");
+  //hist19->Draw("SAME");
+
+  legend = new TLegend(0.15,0.75,0.4,0.85);
+  legend->AddEntry(hist4,"3 global muons with opposite signs, lead","f");
+  legend->AddEntry(hist7,"3 global muons with opposite signs, sublead","f");
+  legend->AddEntry(hist10,"3 global muons with opposite signs, third","f");
+  //legend->AddEntry(hist13,"2 muons 1 track with same signs, lead","f");
+  //legend->AddEntry(hist16,"2 muons 1 track with same signs, sublead","f");
+  //legend->AddEntry(hist19,"2 muons 1 track with same signs, track","f");
+  legend->Draw();
+
+  c3->Print("phi.png");
+
+  TCanvas *c4 = new TCanvas("4","deltaR",1200,900);
+  xaxis = R1->GetXaxis();
+  yaxis = R1->GetYaxis();
+
+  xaxis->SetTitle("deltaR");
+  yaxis->SetTitle("Entries");
+  yaxis->SetTitleOffset(1.2);
+  //yaxis->SetRangeUser(0,1000);
+  c4->cd();
+
+  R1->SetLineColor(2);
+  R2->SetLineColor(6);
+  R3->SetLineColor(4);
+  //hist13->SetLineColor(2);
+  //hist16->SetLineColor(6);
+  //hist19->SetLineColor(4);
+  //hist13->SetLineStyle(2);
+  //hist16->SetLineStyle(2);
+  //hist19->SetLineStyle(2);
+
+  R1->Draw();
+  R2->Draw("SAME");
+  R3->Draw("SAME");
+  //hist13->Draw("SAME");
+  //hist16->Draw("SAME");
+  //hist19->Draw("SAME");
+
+  legend = new TLegend(0.15,0.75,0.4,0.85);
+  legend->AddEntry(R1,"3 global muons with opposite signs, lead","f");
+  legend->AddEntry(R2,"3 global muons with opposite signs, sublead","f");
+  legend->AddEntry(R3,"3 global muons with opposite signs, third","f");
+  //legend->AddEntry(hist13,"2 muons 1 track with same signs, lead","f");
+  //legend->AddEntry(hist16,"2 muons 1 track with same signs, sublead","f");
+  //legend->AddEntry(hist19,"2 muons 1 track with same signs, track","f");
+  legend->Draw();
+  c4->SetLogy();
+
+  c4->Print("deltaR.png");
+
+  TCanvas *c5 = new TCanvas("5","Numglobalmuon",1200,900);
+  xaxis = NUM->GetXaxis();
+  yaxis = NUM->GetYaxis();
+
+  xaxis->SetTitle("Number of global muons");
+  yaxis->SetTitle("Entries");
+  yaxis->SetTitleOffset(1.2);
+  //yaxis->SetRangeUser(0,1000);
+  c5->cd();
+
+  NUM->SetLineColor(4);
+  //hist13->SetLineColor(2);
+  //hist16->SetLineColor(6);
+  //hist19->SetLineColor(4);
+  //hist13->SetLineStyle(2);
+  //hist16->SetLineStyle(2);
+  //hist19->SetLineStyle(2);
+
+  NUM->Draw();
+  //hist13->Draw("SAME");
+  //hist16->Draw("SAME");
+  //hist19->Draw("SAME");
+
+  c5->Print("num.png");
+
+  gBenchmark->Show("select3Mu");
+
 }
