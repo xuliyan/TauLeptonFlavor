@@ -46,7 +46,7 @@
 
 //=== MAIN MACRO ================================================================================================= 
 
-void selectDsPhiPi(const TString conf="samples.conf", // input file
+void selectData(const TString conf="samples.conf", // input file
                const TString outputDir=".",   // output directory
 	       const Bool_t  doScaleCorr=0,    // apply energy scale corrections
 	       const Bool_t  doPU=0
@@ -125,7 +125,7 @@ void selectDsPhiPi(const TString conf="samples.conf", // input file
     
     //
     // Set up output ntuple
-    TString outfilename = ntupDir + TString("/") + snamev[isam] + TString("_Ds2MuPi_select.root");
+    TString outfilename = ntupDir + TString("/") + snamev[isam] + TString("_Tau3Mu_select.root");
     //if(isam!=0 && !doScaleCorr) outfilename = ntupDir + TString("/") + snamev[isam] + TString("_select.raw.root");
     TFile *outFile = new TFile(outfilename,"RECREATE"); 
     TTree *outTree = new TTree("Events","Events");
@@ -255,7 +255,7 @@ void selectDsPhiPi(const TString conf="samples.conf", // input file
 	for(Int_t i=0; i<muonArr->GetEntriesFast(); i++) {
 	  if(i == seqnum[0] || i == seqnum[1]) continue;
           baconhep::TMuon *trk = (baconhep::TMuon*)((*muonArr)[i]);
-	  if(trk->typeBits != 0) continue; //Exclude muon
+	  //if(trk->typeBits != 0) continue; //Exclude muon
 	  vtemp3.SetPtEtaPhiM(trk->pt, trk->eta, trk->phi, 0.13957);
 	  Double_t invmass3 = (vtemp1+vtemp2+vtemp3).M();
 	  if(fabs(invmass3 - 1.96847) < massdiffm3){
@@ -264,6 +264,7 @@ void selectDsPhiPi(const TString conf="samples.conf", // input file
 	    vtrk1 = vtemp3;
 	  }
 	}
+	if((vmu1+vmu2+vtrk1).M() > 1.67682 && (vmu1+vmu2+vtrk1).M() < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass
 	hist0->Fill((vmu1+vmu2).M());
 	hist7->Fill((vmu1+vmu2+vtrk1).M());
 	hist1->Fill(mu1->pt);

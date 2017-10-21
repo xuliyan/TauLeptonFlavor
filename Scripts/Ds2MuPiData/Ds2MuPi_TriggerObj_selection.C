@@ -46,7 +46,7 @@
 
 //=== MAIN MACRO ================================================================================================= 
 
-void selectDsPhiPi(const TString conf="samples.conf", // input file
+void selectData(const TString conf="samples.conf", // input file
                const TString outputDir=".",   // output directory
 	       const Bool_t  doScaleCorr=0,    // apply energy scale corrections
 	       const Bool_t  doPU=0

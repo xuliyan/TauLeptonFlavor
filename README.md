@@ -8,9 +8,12 @@ scram b
 cp /afs/cern.ch/work/a/arapyan/public/HLT_50nsGRun BaconAna/DataFormats/data/
 
 To run the selection:
-For MC, copy scripts from /Scripts/Tau3MuMC and rename them to select3Mu.C
+For MC, copy scripts from /Scripts/Tau3MuMC and rename them to selectGEN.C
 cd Selection
 ./runSelectionGEN.sh
-For Normalization, copy scriptz from /Scripts/Ds2MuPiData and rename them to selectDsPhiPi.X
+For Normalization, copy scripts from /Scripts/Ds2MuPiData and rename them to selectData.C
+cd Selection
+./runSelection.sh
+For Signal, copy scripts from /Scripts/Tau3MuData and rename them to selectData.C
 cd Selection
 ./runSelection.sh

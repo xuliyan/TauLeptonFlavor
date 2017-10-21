@@ -91,7 +91,7 @@ bool Findtaudecay(TClonesArray *muonArr,vector<TLorentzVector> arr,Int_t* record
   return isTaudecay;
 }
 
-void select3Mu(const TString conf="samples.conf", // input file
+void selectGEN(const TString conf="samples.conf", // input file
               const TString outputDir=".",  // output directory
 	      const Bool_t  doScaleCorr=0   // apply energy scale corrections?
 ) {
