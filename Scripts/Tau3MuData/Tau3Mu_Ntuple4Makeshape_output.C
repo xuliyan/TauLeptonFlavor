@@ -51,7 +51,7 @@ void selectData(const TString conf="samples.conf", // input file
 	       const Bool_t  doScaleCorr=0,    // apply energy scale corrections
 	       const Bool_t  doPU=0
 	       ) {
-  gBenchmark->Start("selectDsPhiPi");
+  gBenchmark->Start("selectData");
 
   //--------------------------------------------------------------------------------------------------------------
   // Settings 
@@ -70,14 +70,14 @@ void selectData(const TString conf="samples.conf", // input file
   //Initialize histograms
   TH1F* TriMuFra = new TH1F("TriMuFra","Fraction of trigger object",51,0,1.02);
   TH1F* NumGlobal = new TH1F("NUM","Number of global muon",10,0,10);
-  TH1F* hist0 = new TH1F("Ds^{#pm} -> #mu^{+} #mu^{-} #pi^{#pm} 0","m_{#mu^{+}#mu^{-}} (Data)",100,0,5);
-  TH1F* hist1 = new TH1F("Ds^{#pm} -> #mu^{+} #mu^{-} #pi^{#pm} 1","pT",100,0,20);
-  TH1F* hist2 = new TH1F("Ds^{#pm} -> #mu^{+} #mu^{-} #pi^{#pm} 2","#mu^{-} pT",100,0,20);
-  TH1F* hist3 = new TH1F("Ds^{#pm} -> #mu^{+} #mu^{-} #pi^{#pm} 3","pT",100,0,20);
-  TH1F* hist4 = new TH1F("Ds^{#pm} -> #mu^{+} #mu^{-} #pi^{#pm} 4","#eta",100,-5,5);
-  TH1F* hist5 = new TH1F("Ds^{#pm} -> #mu^{+} #mu^{-} #pi^{#pm} 5","#mu^{-} #eta",100,-5,5);
-  TH1F* hist6 = new TH1F("Ds^{#pm} -> #mu^{+} #mu^{-} #pi^{#pm} 6","#pi^{-} #eta",100,-5,5);
-  TH1F* hist7 = new TH1F("Ds^{#pm} -> #mu^{+} #mu^{-} #Chi^{#pm} 7","m_{#mu^{+}#mu^{-}#Chi^{#pm}} (Data)",200,0,10);
+  TH1F* hist0 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 0","m_{#mu^{+}#mu^{-}} (Data)",100,0,5);
+  TH1F* hist1 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 1","pT",100,0,20);
+  TH1F* hist2 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 2","#mu^{-} pT",100,0,20);
+  TH1F* hist3 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 3","pT",100,0,20);
+  TH1F* hist4 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 4","#eta",100,-5,5);
+  TH1F* hist5 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 5","#mu^{-} #eta",100,-5,5);
+  TH1F* hist6 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 6","#pi^{-} #eta",100,-5,5);
+  TH1F* hist7 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 7","m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (Data)",200,0,10);
   Int_t count1=0, count2=0, count3=0, count4=0, count5=0, count6=0; 
 
   //--------------------------------------------------------------------------------------------------------------
@@ -172,7 +172,7 @@ void selectData(const TString conf="samples.conf", // input file
       //
       Double_t nsel=0, nselvar=0;
       for(UInt_t ientry=0; ientry<eventTree->GetEntries(); ientry++) {
-      //or(UInt_t ientry=0; ientry<100000; ientry++) {
+      //for(UInt_t ientry=0; ientry<10000; ientry++) {
         infoBr->GetEntry(ientry);
 	count1++;
 
@@ -194,88 +194,85 @@ void selectData(const TString conf="samples.conf", // input file
         if(!(info->hasGoodPV)) continue;
 	count4++;
 	
-	//Loop over muon collection
+	//Select muon system
 	muonArr->Clear();
         muonBr->GetEntry(ientry);
-	vector<baconhep::TMuon*> MuArr;
-	vector<baconhep::TMuon*> AntiMuArr;
-	vector<Int_t> SeqnumMu; //num in muonArr
-	vector<Int_t> SeqnumAnti;
-	Int_t TriMuNum = 0;
-	Int_t TrkMuNum = 0;
-        for(Int_t i=0; i<muonArr->GetEntriesFast(); i++) {
-          baconhep::TMuon *muon = (baconhep::TMuon*)((*muonArr)[i]);
-	  if(!(muon->typeBits & baconhep::EMuType::kTracker)) continue; //tracker muon
-	  TrkMuNum++;
-	  if(!isMuonTriggerObj(triggerMenu, muon->hltMatchBits, kFALSE)) continue; //trigger obj
-	  TriMuNum++;
-	  if(muon->q == -1) {
-	    MuArr.push_back(muon);
-	    SeqnumMu.push_back(i);
-	  }
-	  if(muon->q == 1) {
-	    AntiMuArr.push_back(muon);
-	    SeqnumAnti.push_back(i);
-	  }
-	}//end of muon loop;
-
-	if(MuArr.size() < 1 || AntiMuArr.size() < 1) continue;
-	count5++;
-
-        TriMuFra->Fill((Float_t)TriMuNum/(Float_t)TrkMuNum); //tracker muon trigger object fraction
-
-	//Select muon pair
-	baconhep::TMuon *mu1 = NULL;
-	baconhep::TMuon *mu2 = NULL;
-	TLorentzVector vtemp1, vtemp2, vmu1, vmu2;
+	baconhep::TMuon* mu[6] = {NULL,NULL,NULL,NULL,NULL,NULL};
+	baconhep::TMuon *mutemp1 = NULL;
+	baconhep::TMuon *mutemp2 = NULL;
+	baconhep::TMuon *mutemp3 = NULL;
+	TLorentzVector vmu[6];
+	TLorentzVector vtemp1, vtemp2, vtemp3;
 	Double_t massdiffm = 9999;
-	Int_t seqnum[2] = {0,0};
-	for(int i=0; i<MuArr.size(); i++){
-	  vtemp1.SetPtEtaPhiM(MuArr[i]->pt, MuArr[i]->eta, MuArr[i]->phi, MUON_MASS);
-	  for(int j=0; j<AntiMuArr.size(); j++){
-	    vtemp2.SetPtEtaPhiM(AntiMuArr[j]->pt, AntiMuArr[j]->eta, AntiMuArr[j]->phi, MUON_MASS);
-	    Double_t invmass = (vtemp1+vtemp2).M();
-	    if(fabs(invmass - 1.019445) < massdiffm){
-	      massdiffm = fabs(invmass - 1.019445);
-	      mu1 = MuArr[i];
-	      mu2 = AntiMuArr[j];
-	      vmu1 = vtemp1;
-	      vmu2 = vtemp2;
-	      seqnum[0] = SeqnumMu[i];
-	      seqnum[1] = SeqnumAnti[j];
+	for(int i=0; i<muonArr->GetEntriesFast(); i++){
+	  mutemp1 = (baconhep::TMuon*)(*muonArr)[i];
+	  if(!(mutemp1->typeBits & baconhep::EMuType::kTracker)) continue;
+	  vtemp1.SetPtEtaPhiM(mutemp1->pt, mutemp1->eta, mutemp1->phi, MUON_MASS);
+	  for(int j=i+1; j<muonArr->GetEntriesFast(); j++){
+	    mutemp2 = (baconhep::TMuon*)(*muonArr)[j];
+	    if(!(mutemp2->typeBits & baconhep::EMuType::kTracker)) continue;
+	    vtemp2.SetPtEtaPhiM(mutemp2->pt, mutemp2->eta, mutemp2->phi, MUON_MASS);
+	    for(int k=j+1; k<muonArr->GetEntriesFast(); k++){
+	      mutemp3 = (baconhep::TMuon*)(*muonArr)[k];
+	      if(!(mutemp3->typeBits & baconhep::EMuType::kTracker)) continue;
+	      vtemp3.SetPtEtaPhiM(mutemp3->pt, mutemp3->eta, mutemp3->phi, MUON_MASS);
+
+	      Int_t NumMu = 0;
+	      if(((baconhep::TMuon*)(*muonArr)[i])->q == ((baconhep::TMuon*)(*muonArr)[j])->q && ((baconhep::TMuon*)(*muonArr)[i])->q ==((baconhep::TMuon*)(*muonArr)[k])->q) continue;
+	      if(((baconhep::TMuon*)(*muonArr)[i])->typeBits & baconhep::EMuType::kTracker) NumMu++;
+	      if(((baconhep::TMuon*)(*muonArr)[j])->typeBits & baconhep::EMuType::kTracker) NumMu++;
+	      if(((baconhep::TMuon*)(*muonArr)[k])->typeBits & baconhep::EMuType::kTracker) NumMu++;
+	      if(NumMu < 3) continue; //enforce the selected combination to have at least 3 tracker muons, 
+	      Double_t invmass = (vtemp1+vtemp2+vtemp3).M();
+	      if(fabs(invmass - 1.77682) < massdiffm){
+		massdiffm = fabs(invmass - 1.77682);
+		mu[0] = mutemp1;
+		mu[1] = mutemp2;
+		mu[2] = mutemp3;
+		vmu[0] = vtemp1;
+		vmu[1] = vtemp2;
+		vmu[2] = vtemp3;
+	      }
 	    }
 	  }
 	}
-	if(massdiffm > 0.06) continue; //exclude muon paires that have invmass being outside of [0.959,1.079]
-
-	//Select track
-	baconhep::TMuon *trk1 = NULL;
-	TLorentzVector vtemp3, vtrk1;
-	Double_t massdiffm3 = 9999;	
-	for(Int_t i=0; i<muonArr->GetEntriesFast(); i++) {
-	  if(i == seqnum[0] || i == seqnum[1]) continue;
-          baconhep::TMuon *trk = (baconhep::TMuon*)((*muonArr)[i]);
-	  //if(trk->typeBits != 0) continue; //Exclude muon
-	  vtemp3.SetPtEtaPhiM(trk->pt, trk->eta, trk->phi, 0.13957);
-	  Double_t invmass3 = (vtemp1+vtemp2+vtemp3).M();
-	  if(fabs(invmass3 - 1.96847) < massdiffm3){
-	    massdiffm3 = fabs(invmass3 - 1.96847);
-	    trk1 = trk;
-	    vtrk1 = vtemp3;
+	if (mu[0] == NULL || mu[1] == NULL || mu[2] == NULL) continue; //if all muon have same signs then continue	
+	if((vmu[0]+vmu[1]+vmu[2]).M() > 1.67682 && (vmu[0]+vmu[1]+vmu[2]).M() < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass
+	hist0->Fill((vmu[0]+vmu[1]).M());
+	hist7->Fill((vmu[0]+vmu[1]+vmu[2]).M());
+	Double_t maxpt=0,submaxpt=0;
+	for(Int_t i=0; i<3; i++){
+	  if(mu[i]->pt > maxpt){
+	    submaxpt = maxpt;
+	    maxpt = mu[i]->pt;
+	    mu[5]=mu[4];
+	    mu[4]=mu[3];
+	    mu[3]=mu[i];
+	    vmu[5] = vmu[4];
+	    vmu[4] = vmu[3];
+	    vmu[3] = vmu[i];
+	  }
+	  else if(mu[i]->pt > submaxpt){
+	    submaxpt = mu[i]->pt;
+	    mu[5] = mu[4];
+	    mu[4] = mu[i];
+	    vmu[5] = vmu[4];
+	    vmu[4] = vmu[i];
+	  }
+	  else{
+	    mu[5] = mu[i];
+	    vmu[5] = vmu[i];
 	  }
 	}
-	if((vmu1+vmu2+vtrk1).M() > 1.67682 && (vmu1+vmu2+vtrk1).M() < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass
-	hist0->Fill((vmu1+vmu2).M());
-	hist7->Fill((vmu1+vmu2+vtrk1).M());
-	hist1->Fill(mu1->pt);
-	hist2->Fill(mu2->pt);
-	hist3->Fill(trk1->pt);
-	hist4->Fill(mu1->eta);
-	hist5->Fill(mu2->eta);
-	hist6->Fill(trk1->eta);
+	hist1->Fill(mu[3]->pt);
+	hist2->Fill(mu[4]->pt);
+	hist3->Fill(mu[5]->pt);
+	hist4->Fill(mu[3]->eta);
+	hist5->Fill(mu[4]->eta);
+	hist6->Fill(mu[5]->eta);
 
 	//Fill tree
-	sysinvmass = (vmu1+vmu2+vtrk1).M();
+	sysinvmass = (vmu[0]+vmu[1]+vmu[2]).M();
 	//*v1 = vmu1;
 	//*v2 = vmu2;
 	//*v3 = vtrk1;
@@ -349,9 +346,9 @@ void selectData(const TString conf="samples.conf", // input file
   hist2->Draw("same");
   legend = new TLegend(0.50,0.72,0.6,0.8);
   //legend->AddEntry(hist1,"3 muons with opposite signs","f");
-  legend->AddEntry(hist1,"#mu^{+}","f");
-  legend->AddEntry(hist2,"#mu^{-}","f");
-  legend->AddEntry(hist3,"#pi^{#pm}","f");
+  legend->AddEntry(hist1,"#mu lead","f");
+  legend->AddEntry(hist2,"#mu sublead","f");
+  legend->AddEntry(hist3,"#mu third","f");
   legend->Draw();
   c1->Print("pt.png");
 
@@ -374,16 +371,16 @@ void selectData(const TString conf="samples.conf", // input file
   hist6->Draw("same");
   legend = new TLegend(0.45,0.50,0.55,0.62);
   //legend->AddEntry(hist1,"3 muons with opposite signs","f");
-  legend->AddEntry(hist4,"#mu^{+}","f");
-  legend->AddEntry(hist5,"#mu^{-}","f");
-  legend->AddEntry(hist6,"#pi^{#pm}","f");
+  legend->AddEntry(hist4,"#mu lead","f");
+  legend->AddEntry(hist5,"#mu sublead","f");
+  legend->AddEntry(hist6,"#mu third","f");
   legend->Draw();
   c2->Print("eta.png");
 
   TCanvas *c3 = new TCanvas("4","4",1200,900);
   xaxis = hist7->GetXaxis();
   yaxis = hist7->GetYaxis();
-  xaxis->SetTitle("m_{#mu^{+}#mu^{-}#Chi^{#pm}} (GeV)");
+  xaxis->SetTitle("m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (GeV)");
   yaxis->SetTitle("Entries / 50 MeV");
   yaxis->SetTitleOffset(1.2);
   yaxis->SetRangeUser(0.5,50000);
@@ -394,7 +391,7 @@ void selectData(const TString conf="samples.conf", // input file
   hist7->Draw();
   legend = new TLegend(0.50,0.76,0.65,0.8);
   //legend->AddEntry(hist1,"3 muons with opposite signs","f");
-  legend->AddEntry(hist7,"#mu^{+}#mu^{-} #Chi^{#pm}","f");
+  legend->AddEntry(hist7,"#mu^{#mp}#mu^{#pm}#mu^{#mp}","f");
   legend->Draw();
   c3->Print("invmassmutrk.png");
 
@@ -415,5 +412,5 @@ void selectData(const TString conf="samples.conf", // input file
   legend->Draw();
   c4->Print("triobjfra.png");
   
-  gBenchmark->Show("selectDsPhiPi"); 
+  gBenchmark->Show("selectData"); 
 }

@@ -44,10 +44,57 @@
 #include "../Utils/MyTools.hh"      // various helper functions
 #endif
 
+bool Findtaudecay(TClonesArray *muonArr,vector<TLorentzVector> arr,Int_t* record,const int arr_len)
+{
+  Int_t multicount = 0;
+  Bool_t isTaudecay = kFALSE;
+  Double_t diff = 99999999999;
+  for(int i=0; i<arr_len; i++){
+    for(int j=i+1; j<arr_len; j++){
+      for(int k=j+1; k<arr_len; k++){
+	//code here:
+	Int_t Nglobalmuon = 0;
+	if(((baconhep::TMuon*)(*muonArr)[i])->q == ((baconhep::TMuon*)(*muonArr)[j])->q && ((baconhep::TMuon*)(*muonArr)[i])->q ==((baconhep::TMuon*)(*muonArr)[k])->q) continue;
+	/*
+	if(fabs(((baconhep::TMuon*)(*muonArr)[i])->eta) > 1.6) continue;
+	if(fabs(((baconhep::TMuon*)(*muonArr)[j])->eta) > 1.6) continue;
+	if(fabs(((baconhep::TMuon*)(*muonArr)[k])->eta) > 1.6) continue;
+	*/
+	//if(((baconhep::TMuon*)(*muonArr)[i])->pt < 1) continue;
+	//if(((baconhep::TMuon*)(*muonArr)[j])->pt < 1) continue;
+	//if(((baconhep::TMuon*)(*muonArr)[k])->pt < 1) continue;
+	if(((baconhep::TMuon*)(*muonArr)[i])->typeBits & baconhep::EMuType::kTracker) Nglobalmuon++;
+	if(((baconhep::TMuon*)(*muonArr)[j])->typeBits & baconhep::EMuType::kTracker) Nglobalmuon++;
+	if(((baconhep::TMuon*)(*muonArr)[k])->typeBits & baconhep::EMuType::kTracker) Nglobalmuon++;
+	if(Nglobalmuon < 3) continue; //enforce the selected combination to have at least 2 global muons, 
+	TLorentzVector vcom,v1,v2,v3;
+	v1=arr[i];
+	v2=arr[j];
+	v3=arr[k];
+	vcom =v1+v2+v3;
+	Double_t invmass = vcom.M();
+	//if(invmass > 1.6768 && invmass < 1.8768){
+	  isTaudecay = kTRUE;
+	  if((abs(invmass-1.77682))<diff){
+	    diff = abs(invmass-1.77682);
+	    record[0]=i;
+	    record[1]=j;
+	    record[2]=k;
+	  }
+	  //cout<<"diff for "<<multicount<<" is "<<diff<<endl;
+	  multicount++;
+	  //}	
+      }
+    }
+  }
+  //if(multicount > 1) cout<<"More than one system have invmass close to tau: "<<multicount<<endl;
+  return isTaudecay;
+}
+
 void selectGEN(const TString conf="samples.conf", // input file
-	       const TString outputDir=".",  // output directory
-	       const Bool_t  doScaleCorr=0   // apply energy scale corrections?
-	       ) {
+              const TString outputDir=".",  // output directory
+	      const Bool_t  doScaleCorr=0   // apply energy scale corrections?
+) {
   gBenchmark->Start("select3Mu");
 
   //--------------------------------------------------------------------------------------------------------------
@@ -62,23 +109,19 @@ void selectGEN(const TString conf="samples.conf", // input file
   const Int_t BOSON_ID  = 24;
   const Int_t LEPTON_ID = 13;
 
-  TH1F* NUM = new TH1F("NUM","Number of global muon",10,0,10);
-  TH1F* MC = new TH1F("MC truth","MC truth",100,0,10);
-  TH1F* R1 = new TH1F("DeltaR","DeltaR",100,0,1);
-  TH1F* R2 = new TH1F("DeltaR1","DeltaR",100,0,1);
-  TH1F* R3 = new TH1F("DeltaR2","DeltaR",100,0,1);
+  TH1F* parent_h = new TH1F("muon parent","parent id",505,-5,500);
 
-  TH1F* hist0 = new TH1F("tau -> 3 muon 0","RECO invariant mass",100,0,10);
+  TH1F* hist0 = new TH1F("tau -> 3 muon 0","invariant mass",200,0,10);
   TH1F* hist1 = new TH1F("tau -> 3 muon 1","invariant mass",100,0,10);
-  TH1F* hist2 = new TH1F("tau -> 3 muon 2","RECO pT",75,0,15);
-  TH1F* hist3 = new TH1F("tau -> 3 muon 3","RECO Eta",50,-3,3);
-  TH1F* hist4 = new TH1F("tau -> 3 muon 4","RECO Phi",25,-3.5,3.5);
-  TH1F* hist5 = new TH1F("tau -> 3 muon 5","RECO pT",75,0,15);
-  TH1F* hist6 = new TH1F("tau -> 3 muon 6","RECO Eta",50,-3,3);
-  TH1F* hist7 = new TH1F("tau -> 3 muon 7","RECO Phi",25,-3.5,3.5);
-  TH1F* hist8 = new TH1F("tau -> 3 muon 8","RECO pT",75,0,15);
-  TH1F* hist9 = new TH1F("tau -> 3 muon 9","RECO Eta",50,-3,3);
-  TH1F* hist10 = new TH1F("tau -> 3 muon 10","RECO Phi",25,-3.5,3.5);
+  TH1F* hist2 = new TH1F("tau -> 3 muon 2","pT",30,0,15);
+  TH1F* hist3 = new TH1F("tau -> 3 muon 3","Eta",50,-3,3);
+  TH1F* hist4 = new TH1F("tau -> 3 muon 4","Phi",25,-3.5,3.5);
+  TH1F* hist5 = new TH1F("tau -> 3 muon 5","pT",30,0,15);
+  TH1F* hist6 = new TH1F("tau -> 3 muon 6","Eta",50,-3,3);
+  TH1F* hist7 = new TH1F("tau -> 3 muon 7","Phi",25,-3.5,3.5);
+  TH1F* hist8 = new TH1F("tau -> 3 muon 8","pT",30,0,15);
+  TH1F* hist9 = new TH1F("tau -> 3 muon 9","Eta",50,-3,3);
+  TH1F* hist10 = new TH1F("tau -> 3 muon 10","Phi",25,-3.5,3.5);
   TH1F* hist11 = new TH1F("tau -> 3 muon 11","pT",25,0,10);
   TH1F* hist12 = new TH1F("tau -> 3 muon 12","Eta",50,-3,3);
   TH1F* hist13 = new TH1F("tau -> 3 muon 13","Phi",25,-3.5,3.5);
@@ -88,12 +131,22 @@ void selectGEN(const TString conf="samples.conf", // input file
   TH1F* hist17 = new TH1F("tau -> 3 muon 17","pT",25,0,10);
   TH1F* hist18 = new TH1F("tau -> 3 muon 18","Eta",50,-3,3);
   TH1F* hist19 = new TH1F("tau -> 3 muon 19","Phi",25,-3.5,3.5);
-  UInt_t count1=0, count2=0, count3=0, count4=0, count5=0, lessmuon=0, lowpt = 0, multidecay = 0;
+  UInt_t count1=0, count2=0, count3=0, count4=0, count5=0;
   gStyle->SetOptStat(111111);
 
   
   // load trigger menu
   const baconhep::TTrigger triggerMenu("../../BaconAna/DataFormats/data/HLT_50nsGRun");
+
+  // load pileup reweighting file
+  TFile *f_rw = TFile::Open("../Utils/data/puWeights_76x.root", "read");
+
+
+  TH1D *h_rw = (TH1D*) f_rw->Get("puWeights");
+  TH1D *h_rw_up = (TH1D*) f_rw->Get("puWeightsUp");
+  TH1D *h_rw_down = (TH1D*) f_rw->Get("puWeightsDown");
+
+
 
   //--------------------------------------------------------------------------------------------------------------
   // Main analysis code 
@@ -105,6 +158,32 @@ void selectGEN(const TString conf="samples.conf", // input file
   // parse .conf file
   confParse(conf, snamev, samplev);
   const Bool_t hasData = (samplev[0]->fnamev.size()>0);
+
+  // Create output directory
+  gSystem->mkdir(outputDir,kTRUE);
+  const TString ntupDir = outputDir + TString("/ntuples");
+  gSystem->mkdir(ntupDir,kTRUE);
+  
+  // Declare output ntuple variables
+  UInt_t  runNum, lumiSec, evtNum;
+  UInt_t  npv, npu;
+  Float_t scale1fb, scale1fbUp, scale1fbDown, puWeight,puWeightUp,puWeightDown;
+  Float_t met, metPhi, sumEt;
+  Float_t tkMet, tkMetPhi, tkSumEt;
+  //Float_t mvaMet, mvaMetPhi, mvaSumEt, mvaMt, mvaU1, mvaU2;
+  //Float_t puppiMet, puppiMetPhi, puppiSumEt, puppiMt, puppiU1, puppiU2;
+  Int_t   q[3];
+  TLorentzVector *lep1=0, *lep2=0, *lep3=0;
+  Int_t lepID[3];
+  ///// muon specific /////
+  Float_t trkIso[3], emIso[3], hadIso[3];
+  Float_t pfChIso[3], pfGamIso[3], pfNeuIso[3], pfCombIso[3];
+  Float_t d0[3], dz[3];
+  Float_t muNchi2[3];
+  UInt_t nPixHits[3], nTkLayers[3], nValidHits[3], nMatch[3], typeBits[3];
+  UInt_t TolMuNum;
+  UInt_t TolPassPreSel=0;
+  
   
   // Data structures to store info from TTrees
   baconhep::TEventInfo *info  = new baconhep::TEventInfo();
@@ -118,6 +197,12 @@ void selectGEN(const TString conf="samples.conf", // input file
 
   // loop over samples
   for(UInt_t isam=0; isam<samplev.size(); isam++) {
+    
+    // Assume data sample is first sample in .conf file
+    // If sample is empty (i.e. contains no ntuple files), skip to next sample
+    Bool_t isData=kFALSE;
+    if(isam==0 && !hasData) continue;
+    else if (isam==0) isData=kTRUE;
 
     // Assume signal sample is given name "dstau" -- flag to store GEN Ds kinematics
     Bool_t isSignal = (snamev[isam].CompareTo("dstau",TString::kIgnoreCase)==0);
@@ -145,93 +230,151 @@ void selectGEN(const TString conf="samples.conf", // input file
       eventTree->SetBranchAddress("GenParticle",&genPartArr); genPartBr = eventTree->GetBranch("GenParticle");
 
       //Loop over events
-      for(UInt_t ientry=0; ientry<eventTree->GetEntries(); ientry++) {
-      //for(UInt_t ientry=0; ientry<5000; ientry++) {
+      int passpresel = 0;
+
+      //for(UInt_t ientry=0; ientry<eventTree->GetEntries(); ientry++) {
+      for(UInt_t ientry=0; ientry<10000; ientry++) {
         infoBr->GetEntry(ientry);
 	
-        if(ientry%20000==0) cout << "Processing event " << ientry << ". " << (double)ientry/(double)eventTree->GetEntries()*100 << " percent done with this file." << endl;
+        if(ientry%50000==0) cout << "Processing event " << ientry << ". " << (double)ientry/(double)eventTree->GetEntries()*100 << " percent done with this file." << endl;
    
         if(!isGENLevel){
-	  // check for certified lumi (if applicable)
-	  baconhep::RunLumiRangeMap::RunLumiPairType rl(info->runNum, info->lumiSec);      
-	  //if(hasJSON && !rlrm.hasRunLumi(rl)) continue;  
-	  
-	  // trigger requirement               
-	  //if (!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
-	  
-	  // good vertex requirement
-	  //if(!(info->hasGoodPV)) continue;
+	// check for certified lumi (if applicable)
+        baconhep::RunLumiRangeMap::RunLumiPairType rl(info->runNum, info->lumiSec);      
+        //if(hasJSON && !rlrm.hasRunLumi(rl)) continue;  
+
+        // trigger requirement               
+        //if (!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
+      
+        // good vertex requirement
+        //if(!(info->hasGoodPV)) continue;
+         passpresel++;
 	}
 	
-	//////////////////////MATCHING/////////////////////////////////	
-	genPartArr->Clear();
-	genPartBr->GetEntry(ientry);
-	muonArr->Clear();
-	muonBr->GetEntry(ientry);
-
-	//Store GEN level tau muon
-	vector<baconhep::TGenParticle*> genmuonArr;
-	baconhep::TGenParticle* sortArr[3];
-	for(int i=0; i<genPartArr->GetEntries(); i++){
-	  baconhep::TGenParticle *genpar = (baconhep::TGenParticle*)((*genPartArr)[i]);
-	  if(genpar->pdgId != 13 && genpar->pdgId != -13) continue;
-	  if(genpar->status != 1) continue;
-	  Int_t parentid1=dynamic_cast<baconhep::TGenParticle *>(genPartArr->At(genpar->parent>-1 ? genpar->parent : 0))->pdgId;
-	  if(parentid1 != 15 && parentid1 != -15) continue;
-	  genmuonArr.push_back(genpar);
+	// SELECTION PROCEDURE:
+	Int_t globalmuon=0;
+	Int_t trk=0;
+	Int_t Numtrk[200];
+	Int_t runcount=0;
+	Int_t Numglomuon[50];
+	Bool_t passSel=kFALSE;	
+	//=================================BEGIN OF SIM LEVEL=====================================
+	if(!isGENLevel){
+	  muonArr->Clear();
+	  muonBr->GetEntry(ientry);
+	  // Looking for two gloabl muons
+	  for(Int_t i=0; i<muonArr->GetEntriesFast(); i++) {
+	    const baconhep::TMuon *mu = (baconhep::TMuon*)((*muonArr)[i]);
+	    
+	    // apply scale and resolution corrections to MC
+	    //Double_t mupt_corr = mu->pt;
+	    
+	    // Selection criteria
+	    //if(fabs(mu->eta) > ETA_CUT)         continue;  // lepton |eta| cut
+	    //if(mupt_corr     < PT_CUT_LEAD)          continue;  // lepton pT cut
+	    
+	    //if(!(mu->typeBits & baconhep::EMuType::kGlobal)) continue;
+	    if(mu->typeBits & baconhep::EMuType::kTracker){
+	    globalmuon++;
+	    Numglomuon[runcount] = i;
+	    runcount++;
+	    }
+	    //Double_t iso = mu->chHadIso + TMath::Max(mu->neuHadIso + mu->gammaIso - 0.5*(mu->puIso),Double_t(0));
+	    //if(iso > 0.15*(mu->pt)) continue;
+	    
+	    // for the first and second muon, we require it to be a global muon
+	    //if(!passMuonID(mu))                 continue;  // lepton selection
+	    //if(!isMuonTriggerObj(triggerMenu, mu->hltMatchBits, kFALSE)) continue;
+	    
+	    //nPassLep++;
+	    //goodMuon = mu;
+	  }//End of muon array loop
 	}
+	if (globalmuon > 1){
+	  count1++;
+	  passSel = kTRUE;
+	}	
+	if(1){//set kTRUE or pssSel here will not affect the result since Findtaudecay enforced selecred combination to have more than 2 global muons.
+	  count5++;
+	  if (!isGENLevel){
+	    const baconhep::TMuon *SelMuonArr[6];
+	    Int_t record[3]={0,0,0};
+	    vector<TLorentzVector> vLep;
+	    TLorentzVector vLepRe[3], vCom;
 
-	//Only study events contain single decay 229041
-	if(genmuonArr.size() > 3) continue;
-	count1++;
+	    //store global muon into array
+	    for(int p=0; p<muonArr->GetEntriesFast(); p++){
+	      TLorentzVector vtemp;
+	      vtemp.SetPtEtaPhiM(((baconhep::TMuon*)(*muonArr)[p])->pt, ((baconhep::TMuon*)(*muonArr)[p])->eta, ((baconhep::TMuon*)(*muonArr)[p])->phi, MUON_MASS);
+	      vLep.push_back(vtemp);//store corresponding 4-vector
+	    }
 
-	//Sort muon array
-	Double_t maxpt=0, submaxpt=0, subsubpt=0;
-	for(int l=0; l<3; l++){
-	  if(genmuonArr[l]->pt >= maxpt){
-	    sortArr[2] = sortArr[1];
-	    sortArr[1] = sortArr[0];
-	    sortArr[0] = genmuonArr[l];
-	    subsubpt = submaxpt;
-	    submaxpt = maxpt;
-	    maxpt = genmuonArr[l]->pt;	  
-	  }
-	  else if(genmuonArr[l]->pt < maxpt && genmuonArr[l]->pt >= submaxpt){
-	    sortArr[2] = sortArr[1];
-	    sortArr[1] = genmuonArr[l];
-	    subsubpt = submaxpt;
-	    submaxpt = genmuonArr[l]->pt;
-	  }
-	  else{
-	    subsubpt = genmuonArr[l]->pt;
-	    sortArr[2] = genmuonArr[l];
-	  }
+	    if(Findtaudecay(muonArr,vLep,record,muonArr->GetEntriesFast())){     
+	       for(int p=0; p<3; p++){
+	      SelMuonArr[p] = (baconhep::TMuon*)((*muonArr)[record[p]]);
+	      }	    
+	      Double_t maxpt=0, submaxpt=0;
+	      for(int l=0; l<3; l++){
+		if(SelMuonArr[l]->pt >= maxpt){
+		  submaxpt = maxpt;
+		  maxpt = SelMuonArr[l]->pt;	  
+		  SelMuonArr[5]=SelMuonArr[4];
+		  SelMuonArr[4]=SelMuonArr[3];
+		  SelMuonArr[3]=SelMuonArr[l];
+		}
+		else if(SelMuonArr[l]->pt < maxpt && SelMuonArr[l]->pt >= submaxpt){
+		  submaxpt = SelMuonArr[l]->pt;
+		  SelMuonArr[5]=SelMuonArr[4];
+		  SelMuonArr[4]=SelMuonArr[l];
+		}
+		else{
+		  SelMuonArr[5]=SelMuonArr[l];
+		}
+	      }
+	      for(int p=3; p<6; p++){
+		vLepRe[p-3].SetPtEtaPhiM(SelMuonArr[p]->pt, SelMuonArr[p]->eta, SelMuonArr[p]->phi, MUON_MASS);
+	      }
+	      vCom = vLepRe[0]+vLepRe[1]+vLepRe[2];
+	      Double_t invmass = vCom.M();
+	      count2++;
+	      
+	      
+	      count3++;
+	      //bool passcut = kTRUE;
+	      //if(fabs(SimMuonArr[0]->eta) > ETA_CUT) passcut=kFALSE;  // lepton |eta| cut
+	      //if(fabs(SimMuonArr[1]->eta) > ETA_CUT) passcut=kFALSE;  // lepton |eta| cut
+	      //if(fabs(SimMuonArr[2]->eta) > ETA_CUT) passcut=kFALSE;  // lepton |eta| cut
+	      //if(passcut) count3++;
+	      //if(SimMuonArr[0]->pt<PT_CUT_LEAD || SimMuonArr[1]->pt<PT_CUT_LEAD || SimMuonArr[2]->pt<PT_CUT_SUB) passcut=kFALSE;  // lepton pT cut
+	      //if(passcut){
+	      hist0->Fill(invmass);//store events come from tau
+	      hist2->Fill(SelMuonArr[3]->pt); hist5->Fill(SelMuonArr[4]->pt); hist8->Fill(SelMuonArr[5]->pt);
+	      hist3->Fill(SelMuonArr[3]->eta); hist6->Fill(SelMuonArr[4]->eta); hist9->Fill(SelMuonArr[5]->eta);
+	      hist4->Fill(SelMuonArr[3]->phi); hist7->Fill(SelMuonArr[4]->phi); hist10->Fill(SelMuonArr[5]->phi);	      
+	      count4++;
+	      
+	      //}
+	      
+	    }
+	  }	  
 	}
-
-	if(ientry <20) cout<<maxpt<<" "<<submaxpt<<" "<<subsubpt<<endl;
-
-	Bool_t pass = kTRUE;
-	if((genmuonArr[0]->eta < 2 || genmuonArr[0]->eta > 5) ||
-	   (genmuonArr[1]->eta < 2 || genmuonArr[1]->eta > 5) ||
-	   (genmuonArr[2]->eta < 2 || genmuonArr[2]->eta > 5) ||
-	   maxpt < 0.3 ||
-	   submaxpt < 0.3 ||
-	   subsubpt < 0.3) pass = kFALSE;
-	if(pass)
-	  count3++;
-	   
-	
       }//end of event loop
+      cout<<"There is "<<passpresel<<" events passed pre selection"<<endl;
+      TolPassPreSel+=passpresel;
       delete infile;
       infile=0, eventTree=0;    
     }
   }
+  delete h_rw;
+  delete h_rw_up;
+  delete h_rw_down;
+  delete f_rw;
   delete info;
   delete gen;
   delete genPartArr;
   delete muonArr;
   delete vertexArr;
-  
+    
   //--------------------------------------------------------------------------------------------------------------
   // Output
   //==============================================================================================================
@@ -247,16 +390,16 @@ void selectGEN(const TString conf="samples.conf", // input file
   cout << "  <> Output saved in " << outputDir << "/" << endl;    
   cout << endl;
 
-  //Draw Graph
+   //Draw Graph
   //THStack *all = new THStack("tau -> 3 muons","invariant mass");
   TCanvas *c0 = new TCanvas("c0","invariant mass",1200,900);
   TAxis *xaxis = hist0->GetXaxis();
   TAxis *yaxis = hist0->GetYaxis();
 
   xaxis->SetTitle("Invariant mass (GeV)");
-  yaxis->SetTitle("Entries / 0.1 GeV");
+  yaxis->SetTitle("Entries / 0.05 GeV");
   yaxis->SetTitleOffset(1.2);
-  yaxis->SetRangeUser(0.5,40000);
+  yaxis->SetRangeUser(0.5,50000);
   c0->cd();
   
 
@@ -277,14 +420,14 @@ void selectGEN(const TString conf="samples.conf", // input file
   //c0->cd();
   c0->SetLogy();
   /*
-    all->Draw();
-    TAxis *xaxis = all->GetXaxis();
-    TAxis *yaxis = all->GetYaxis();
-    xaxis->SetTitle("Invariant mass (GeV)");
-    yaxis->SetTitle("Entries");
-    yaxis->SetTitleOffset(1.2);
-    all->SetMinimum(8.);
-    all->SetMaximum(120000.);
+  all->Draw();
+  TAxis *xaxis = all->GetXaxis();
+  TAxis *yaxis = all->GetYaxis();
+  xaxis->SetTitle("Invariant mass (GeV)");
+  yaxis->SetTitle("Entries");
+  yaxis->SetTitleOffset(1.2);
+  all->SetMinimum(8.);
+  all->SetMaximum(120000.);
   */
   TF1 *f1 = new TF1("m1","gaus",1.5,2);
   TF1 *f2 = new TF1("m2","gaus",0,5);
@@ -309,18 +452,17 @@ void selectGEN(const TString conf="samples.conf", // input file
   
 
   c0->Print("invariant mass.png");
-  cout<<count1<<" "<<count2<<" "<<count3<<" "<<count4<<" "<<count5<<" "<<lessmuon<<" "<<multidecay<<" "<<lowpt<<endl;
+  cout<<count1<<" "<<count2<<" "<<count3<<" "<<count4<<" "<<count5<<endl;
 
   TCanvas *c1 = new TCanvas("1","muon pT",1200,900);
   xaxis = hist2->GetXaxis();
   yaxis = hist2->GetYaxis();
 
   xaxis->SetTitle("pT (GeV)");
-  yaxis->SetTitle("Entries / 0.2 GeV");
+  yaxis->SetTitle("Entries / 0.6 GeV");
   yaxis->SetTitleOffset(1.5);
-  yaxis->SetRangeUser(0.5,45000);
+  yaxis->SetRangeUser(0,10000);
   c1->cd();
-  c1->SetLogy();
 
   hist2->SetLineColor(2);
   hist5->SetLineColor(6);
@@ -360,7 +502,7 @@ void selectGEN(const TString conf="samples.conf", // input file
   xaxis->SetTitle("eta");
   yaxis->SetTitle("Entries");
   yaxis->SetTitleOffset(1.2);
-  yaxis->SetRangeUser(0,250);
+  yaxis->SetRangeUser(0,3000);
   c2->cd();
 
   hist3->SetLineColor(2);
@@ -401,7 +543,7 @@ void selectGEN(const TString conf="samples.conf", // input file
   xaxis->SetTitle("phi");
   yaxis->SetTitle("Entries / 0.28 rad");
   yaxis->SetTitleOffset(1.3);
-  yaxis->SetRangeUser(0,250);
+  yaxis->SetRangeUser(0,1000);
   c3->cd();
 
   hist4->SetLineColor(2);
@@ -431,70 +573,6 @@ void selectGEN(const TString conf="samples.conf", // input file
   legend->Draw();
 
   c3->Print("phi.png");
-
-  TCanvas *c4 = new TCanvas("4","deltaR",1200,900);
-  xaxis = R1->GetXaxis();
-  yaxis = R1->GetYaxis();
-
-  xaxis->SetTitle("deltaR");
-  yaxis->SetTitle("Entries");
-  yaxis->SetTitleOffset(1.2);
-  //yaxis->SetRangeUser(0,1000);
-  c4->cd();
-
-  R1->SetLineColor(2);
-  R2->SetLineColor(6);
-  R3->SetLineColor(4);
-  //hist13->SetLineColor(2);
-  //hist16->SetLineColor(6);
-  //hist19->SetLineColor(4);
-  //hist13->SetLineStyle(2);
-  //hist16->SetLineStyle(2);
-  //hist19->SetLineStyle(2);
-
-  R1->Draw();
-  R2->Draw("SAME");
-  R3->Draw("SAME");
-  //hist13->Draw("SAME");
-  //hist16->Draw("SAME");
-  //hist19->Draw("SAME");
-
-  legend = new TLegend(0.15,0.75,0.4,0.85);
-  legend->AddEntry(R1,"3 global muons with opposite signs, lead","f");
-  legend->AddEntry(R2,"3 global muons with opposite signs, sublead","f");
-  legend->AddEntry(R3,"3 global muons with opposite signs, third","f");
-  //legend->AddEntry(hist13,"2 muons 1 track with same signs, lead","f");
-  //legend->AddEntry(hist16,"2 muons 1 track with same signs, sublead","f");
-  //legend->AddEntry(hist19,"2 muons 1 track with same signs, track","f");
-  legend->Draw();
-  c4->SetLogy();
-
-  c4->Print("deltaR.png");
-
-  TCanvas *c5 = new TCanvas("5","Numglobalmuon",1200,900);
-  xaxis = NUM->GetXaxis();
-  yaxis = NUM->GetYaxis();
-
-  xaxis->SetTitle("Number of global muons");
-  yaxis->SetTitle("Entries");
-  yaxis->SetTitleOffset(1.2);
-  //yaxis->SetRangeUser(0,1000);
-  c5->cd();
-
-  NUM->SetLineColor(4);
-  //hist13->SetLineColor(2);
-  //hist16->SetLineColor(6);
-  //hist19->SetLineColor(4);
-  //hist13->SetLineStyle(2);
-  //hist16->SetLineStyle(2);
-  //hist19->SetLineStyle(2);
-
-  NUM->Draw();
-  //hist13->Draw("SAME");
-  //hist16->Draw("SAME");
-  //hist19->Draw("SAME");
-
-  c5->Print("num.png");
 
   gBenchmark->Show("select3Mu");
 
