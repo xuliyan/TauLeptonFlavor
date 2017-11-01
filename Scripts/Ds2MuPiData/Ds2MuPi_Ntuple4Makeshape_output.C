@@ -278,7 +278,7 @@ void selectData(const TString conf="samples.conf", // input file
 	//*v1 = vmu1;
 	//*v2 = vmu2;
 	//*v3 = vtrk1;
-	if(sysinvmass > 1.67682 || sysinvmass < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass
+	if(sysinvmass > 1.67682 && sysinvmass < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass
 	outTree->Fill();
 	
       }//end of event loop
