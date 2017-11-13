@@ -26,7 +26,7 @@
 #include <TLegend.h>
 #include <TVector3.h>
 #include <TF1.h>
-#include "TH1D.h"
+#include "TH2F.h"
 #include "TRandom.h"
 #include "ConfParse.hh"             // input conf file parser
 #include "../Utils/CSample.hh"      // helper class to handle samples
@@ -46,7 +46,7 @@
 
 //=== MAIN MACRO ================================================================================================= 
 
-void selectData(const TString conf="samples.conf", // input file
+void selectGEN(const TString conf="samples.conf", // input file
                const TString outputDir=".",   // output directory
 	       const Bool_t  doScaleCorr=0,    // apply energy scale corrections
 	       const Bool_t  doPU=0
@@ -78,7 +78,8 @@ void selectData(const TString conf="samples.conf", // input file
   TH1F* hist5 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 5","#mu^{-} #eta",100,-5,5);
   TH1F* hist6 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 6","#pi^{-} #eta",100,-5,5);
   TH1F* hist7 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 7","m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (Data)",200,0,10);
-  Int_t count1=0, count2=0, count3=0, count4=0, count5=0, count6=0; 
+  TH2F* hista = new TH2F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 8","#Delta R Sum vs m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (MC)",200,1.67682,1.87682,200,0,4);
+  Int_t count1=0, count2=0, count3=0, count4=0, count5=0, count6=0, count7=0, count8=0; 
 
   //--------------------------------------------------------------------------------------------------------------
   // Main analysis code 
@@ -105,8 +106,8 @@ void selectData(const TString conf="samples.conf", // input file
   
   // Data structures to store info from TTrees
   baconhep::TEventInfo *info   = new baconhep::TEventInfo();
-  //baconhep::TGenEventInfo *gen = new baconhep::TGenEventInfo();
-  //TClonesArray *genPartArr = new TClonesArray("baconhep::TGenParticle");
+  baconhep::TGenEventInfo *gen = new baconhep::TGenEventInfo();
+  TClonesArray *genPartArr = new TClonesArray("baconhep::TGenParticle");
   TClonesArray *muonArr    = new TClonesArray("baconhep::TMuon");
   TClonesArray *vertexArr  = new TClonesArray("baconhep::TVertex"); 
   TFile *infile=0;
@@ -166,6 +167,10 @@ void selectData(const TString conf="samples.conf", // input file
 
       //GEN handle
       //>>>>>>>>>>>>>>>>>>>>>>>>
+      TBranch *genBr=0, *genPartBr=0;
+      eventTree->SetBranchAddress("GenEvtInfo", &gen); genBr = eventTree->GetBranch("GenEvtInfo");
+      eventTree->SetBranchAddress("GenParticle",&genPartArr); genPartBr = eventTree->GetBranch("GenParticle");
+      
    
       //
       // loop over events
@@ -176,23 +181,42 @@ void selectData(const TString conf="samples.conf", // input file
         infoBr->GetEntry(ientry);
 	count1++;
 
-	if(ientry%5000==0) cout << "Processing event " << ientry << ". " << (double)ientry/(double)eventTree->GetEntries()*100 << " percent done with this file." << endl;
+	if(ientry%50000==0) cout << "Processing event " << ientry << ". " << (double)ientry/(double)eventTree->GetEntries()*100 << " percent done with this file." << endl;
 
 	//weight staff
 	//>>>>>>>>>>>>>>>>>>>>>
      
         // check for certified lumi (if applicable)
         baconhep::RunLumiRangeMap::RunLumiPairType rl(info->runNum, info->lumiSec);      
-        if(hasJSON && !rlrm.hasRunLumi(rl)) continue;
+        //if(hasJSON && !rlrm.hasRunLumi(rl)) continue;
 	count2++;
 
         // trigger requirement               
-        if(!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
+        //if(!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
 	count3++;
 
         // good vertex requirement
-        if(!(info->hasGoodPV)) continue;
+        //if(!(info->hasGoodPV)) continue;
 	count4++;
+
+	//temp section, delete for data selection==========================
+	genPartArr->Clear();
+	genPartBr->GetEntry(ientry);
+	//Store GEN level tau muon
+	vector<baconhep::TGenParticle*> genmuonArr;
+	for(int i=0; i<genPartArr->GetEntries(); i++){
+	  baconhep::TGenParticle *genpar = (baconhep::TGenParticle*)((*genPartArr)[i]);
+	  if(genpar->pdgId != 13 && genpar->pdgId != -13) continue;
+	  if(genpar->status != 1) continue;
+	  Int_t parentid1=dynamic_cast<baconhep::TGenParticle *>(genPartArr->At(genpar->parent>-1 ? genpar->parent : 0))->pdgId;
+	  if(parentid1 != 15 && parentid1 != -15) continue;
+	  genmuonArr.push_back(genpar);
+	}
+
+	//Only study events contain single decay 229041
+	if(genmuonArr.size() > 3) continue;
+	count5++;
+	//===================================================================
 	
 	//Select muon system
 	muonArr->Clear();
@@ -207,14 +231,17 @@ void selectData(const TString conf="samples.conf", // input file
 	for(int i=0; i<muonArr->GetEntriesFast(); i++){
 	  mutemp1 = (baconhep::TMuon*)(*muonArr)[i];
 	  if(!(mutemp1->typeBits & baconhep::EMuType::kTracker)) continue;
+	  //if(!isMuonTriggerObj(triggerMenu, muon->hltMatchBits, kFALSE)) continue;
 	  vtemp1.SetPtEtaPhiM(mutemp1->pt, mutemp1->eta, mutemp1->phi, MUON_MASS);
 	  for(int j=i+1; j<muonArr->GetEntriesFast(); j++){
 	    mutemp2 = (baconhep::TMuon*)(*muonArr)[j];
 	    if(!(mutemp2->typeBits & baconhep::EMuType::kTracker)) continue;
+	    //if(!isMuonTriggerObj(triggerMenu, muon->hltMatchBits, kFALSE)) continue;
 	    vtemp2.SetPtEtaPhiM(mutemp2->pt, mutemp2->eta, mutemp2->phi, MUON_MASS);
 	    for(int k=j+1; k<muonArr->GetEntriesFast(); k++){
 	      mutemp3 = (baconhep::TMuon*)(*muonArr)[k];
 	      if(!(mutemp3->typeBits & baconhep::EMuType::kTracker)) continue;
+	      //if(!isMuonTriggerObj(triggerMenu, muon->hltMatchBits, kFALSE)) continue;
 	      vtemp3.SetPtEtaPhiM(mutemp3->pt, mutemp3->eta, mutemp3->phi, MUON_MASS);
 
 	      Int_t NumMu = 0;
@@ -237,9 +264,7 @@ void selectData(const TString conf="samples.conf", // input file
 	  }
 	}
 	if (mu[0] == NULL || mu[1] == NULL || mu[2] == NULL) continue; //if all muon have same signs then continue	
-	if((vmu[0]+vmu[1]+vmu[2]).M() > 1.67682 && (vmu[0]+vmu[1]+vmu[2]).M() < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass
-	hist0->Fill((vmu[0]+vmu[1]).M());
-	hist7->Fill((vmu[0]+vmu[1]+vmu[2]).M());
+	//if((vmu[0]+vmu[1]+vmu[2]).M() > 1.67682 && (vmu[0]+vmu[1]+vmu[2]).M() < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass
 	Double_t maxpt=0,submaxpt=0;
 	for(Int_t i=0; i<3; i++){
 	  if(mu[i]->pt > maxpt){
@@ -264,12 +289,178 @@ void selectData(const TString conf="samples.conf", // input file
 	    vmu[5] = vmu[i];
 	  }
 	}
+	/*
 	hist1->Fill(mu[3]->pt);
 	hist2->Fill(mu[4]->pt);
 	hist3->Fill(mu[5]->pt);
 	hist4->Fill(mu[3]->eta);
 	hist5->Fill(mu[4]->eta);
 	hist6->Fill(mu[5]->eta);
+	hist0->Fill((vmu[0]+vmu[1]).M());
+	hist7->Fill((vmu[0]+vmu[1]+vmu[2]).M());
+	*/
+	count6++;
+
+	//============================RECO-GEN match========================
+	//Initialize deltaR 2D array
+	vector<vector<double> > deltaR(genmuonArr.size());
+	for(int i=0; i<genmuonArr.size(); i++){
+	  deltaR[i].resize(3);
+	  for(int j=0; j<3; j++){
+	    deltaR[i][j] = 9999; //initialize
+	  }
+	}
+
+	//Calculate deltaR
+	for(int i=0; i<genmuonArr.size(); i++){
+	  for(int j=0; j<3; j++){
+	    if(genmuonArr[i]->pdgId * mu[j+3]->q > 0) continue;//same sign
+	    deltaR[i][j] = toolbox::deltaR(genmuonArr[i]->eta, genmuonArr[i]->phi, mu[j+3]->eta, mu[j+3]->phi);
+	  }
+	}
+
+	//Find the smallest deltaR
+	Double_t min = 8888, submin = 8888, subsubmin = 8888;
+	Int_t rr[3][2];
+	for(int k=0; k<3; k++){
+	  for(int j=0; j<2; j++){
+	    rr[k][j] = -99;
+	  }
+	}
+	for(int k=0; k<genmuonArr.size(); k++){
+	  for(int j=0; j<3; j++){
+	    if(deltaR[k][j] < min){
+	      min = deltaR[k][j];
+	      rr[0][0] = k;
+	      rr[0][1] = j;
+	    }
+	  }
+	}
+	for(int k=0; k<genmuonArr.size(); k++){
+	  if(k==rr[0][0]) continue;
+	  for(int j=0; j<3; j++){
+	    if(j==rr[0][1]) continue;
+	    if(deltaR[k][j] < submin){
+	      submin = deltaR[k][j];
+	      rr[1][0] = k;
+	      rr[1][1] = j;
+	    }
+	  }
+	}
+	for(int k=0; k<genmuonArr.size(); k++){
+	  if(k==rr[0][0] || k==rr[1][0]) continue;
+	  for(int j=0; j<3; j++){
+	    if(j==rr[0][1] || j==rr[1][1]) continue;
+	    if(deltaR[k][j] < subsubmin){
+	      subsubmin = deltaR[k][j];
+	      rr[2][0] = k;
+	      rr[2][1] = j;
+	    }
+	  }
+	}
+
+	//Check if we formed 3 RECO-GEN muon pair candidates
+	Bool_t is3pair = kTRUE;
+	for(int k=0; k<3; k++){
+	  for(int j=0; j<2; j++){
+	    if(rr[k][j] == -99) is3pair = kFALSE;
+	  }
+	}
+	//Exclude events not matched
+	if(!is3pair) {
+	  /*
+	  cout<<"GEN 1: pt: "<<genmuonArr[0]->pt<<" eta: "<<genmuonArr[0]->eta<<" phi: "<<genmuonArr[0]->phi<<" ID: "<<genmuonArr[0]->pdgId<<" parent: "<<genmuonArr[0]->parent<<" parent ID: "<<((baconhep::TGenParticle*)((*genPartArr)[(genmuonArr[0]->parent>-1 ? genmuonArr[0]->parent : 0)]))->pdgId<<endl;
+	  cout<<"GEN 2: pt: "<<genmuonArr[1]->pt<<" eta: "<<genmuonArr[1]->eta<<" phi: "<<genmuonArr[1]->phi<<" ID: "<<genmuonArr[1]->pdgId<<" parent: "<<genmuonArr[1]->parent<<" parent ID: "<<((baconhep::TGenParticle*)((*genPartArr)[(genmuonArr[0]->parent>-1 ? genmuonArr[1]->parent : 0)]))->pdgId<<endl;
+	  cout<<"GEN 3: pt: "<<genmuonArr[2]->pt<<" eta: "<<genmuonArr[2]->eta<<" phi: "<<genmuonArr[2]->phi<<" ID: "<<genmuonArr[2]->pdgId<<" parent: "<<genmuonArr[2]->parent<<" parent ID: "<<((baconhep::TGenParticle*)((*genPartArr)[(genmuonArr[0]->parent>-1 ? genmuonArr[2]->parent : 0)]))->pdgId<<endl;
+
+	  cout<<"SIM 1: pt: "<<mu[3]->pt<<" eta: "<<mu[3]->eta<<" phi: "<<mu[3]->phi<<" q: "<<mu[3]->q<<endl;
+	  cout<<"SIM 2: pt: "<<mu[4]->pt<<" eta: "<<mu[4]->eta<<" phi: "<<mu[4]->phi<<" q: "<<mu[4]->q<<endl;
+	  cout<<"SIM 3: pt: "<<mu[5]->pt<<" eta: "<<mu[5]->eta<<" phi: "<<mu[5]->phi<<" q: "<<mu[5]->q<<endl;
+
+	  cout<<"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"<<endl;
+	  cout<<endl;
+	  */
+	  continue;
+	}
+	count7++;
+
+	//Initialize container
+	const baconhep::TMuon *SelMuonArr[6];
+	const baconhep::TGenParticle *SelMuonArrG[6];
+	Double_t R[6] = {0,0,0,0,0,0};
+
+	//Store results
+	SelMuonArrG[0] = genmuonArr[rr[0][0]];
+	SelMuonArrG[1] = genmuonArr[rr[1][0]];
+	SelMuonArrG[2] = genmuonArr[rr[2][0]];
+	SelMuonArr[0] = mu[rr[0][1]+3];
+	SelMuonArr[1] = mu[rr[1][1]+3];
+	SelMuonArr[2] = mu[rr[2][1]+3];
+	R[0] = min;
+	R[1] = submin;
+	R[2] = subsubmin;
+
+	//Sort muon array
+	Double_t maxpt1=0, submaxpt1=0;
+	for(int l=0; l<3; l++){
+	  if(SelMuonArr[l]->pt >= maxpt1){
+	    submaxpt1 = maxpt1;
+	    maxpt1 = SelMuonArr[l]->pt;	  
+	    SelMuonArr[5]=SelMuonArr[4];
+	    SelMuonArr[4]=SelMuonArr[3];
+	    SelMuonArr[3]=SelMuonArr[l];
+	    SelMuonArrG[5]=SelMuonArrG[4];
+	    SelMuonArrG[4]=SelMuonArrG[3];
+	    SelMuonArrG[3]=SelMuonArrG[l];
+	    R[5] = R[4];
+	    R[4] = R[3];
+	    R[3] = R[l];
+	  }
+	  else if(SelMuonArr[l]->pt < maxpt1 && SelMuonArr[l]->pt >= submaxpt1){
+	    submaxpt1 = SelMuonArr[l]->pt;
+	    SelMuonArr[5]=SelMuonArr[4];
+	    SelMuonArr[4]=SelMuonArr[l];
+	    SelMuonArrG[5]=SelMuonArrG[4];
+	    SelMuonArrG[4]=SelMuonArrG[l];
+	    R[5] = R[4];
+	    R[4] = R[l];
+	  }
+	  else{
+	    SelMuonArr[5]=SelMuonArr[l];
+	    SelMuonArrG[5]=SelMuonArrG[l];
+	    R[5] = R[l];
+	  }
+	}
+
+	//Match requirement
+	Int_t passMatch = 0;
+	Double_t deltaR1 = toolbox::deltaR(SelMuonArrG[3]->eta,SelMuonArrG[3]->phi,SelMuonArr[3]->eta,SelMuonArr[3]->phi);
+	Double_t deltaR2 = toolbox::deltaR(SelMuonArrG[4]->eta,SelMuonArrG[4]->phi,SelMuonArr[4]->eta,SelMuonArr[4]->phi);
+	Double_t deltaR3 = toolbox::deltaR(SelMuonArrG[5]->eta,SelMuonArrG[5]->phi,SelMuonArr[5]->eta,SelMuonArr[5]->phi);
+	Double_t deltaRSum = deltaR1+deltaR2+deltaR3;
+	if(deltaR1 < 0.014) passMatch++;
+	if(deltaR2 < 0.017) passMatch++;
+	if(deltaR3 < 0.025) passMatch++;
+	//if(passMatch != 3) continue;
+	count8++;
+	//==================================================================
+	
+	//deltaR study
+	TLorentzVector vsum;
+	vsum = vmu[0]+vmu[1]+vmu[2];
+	Double_t dR1 = toolbox::deltaR(vmu[0].Eta(),vmu[0].Phi(),vsum.Eta(),vsum.Phi());
+	Double_t dR2 = toolbox::deltaR(vmu[1].Eta(),vmu[1].Phi(),vsum.Eta(),vsum.Phi());
+	Double_t dR3 = toolbox::deltaR(vmu[2].Eta(),vmu[2].Phi(),vsum.Eta(),vsum.Phi());
+	Double_t dRSum = dR1+dR2+dR3;
+	hista->Fill((vmu[0]+vmu[1]+vmu[2]).M(),dRSum);
+	hist1->Fill(mu[3]->pt);
+	hist2->Fill(mu[4]->pt);
+	hist3->Fill(mu[5]->pt);
+	hist4->Fill(mu[3]->eta);
+	hist5->Fill(mu[4]->eta);
+	hist6->Fill(mu[5]->eta);
+	hist0->Fill((vmu[0]+vmu[1]).M());
+	hist7->Fill((vmu[0]+vmu[1]+vmu[2]).M());
 
 	//Fill tree
 	sysinvmass = (vmu[0]+vmu[1]+vmu[2]).M();
@@ -305,10 +496,10 @@ void selectData(const TString conf="samples.conf", // input file
   cout << endl;
   cout << "  <> Output saved in " << outputDir << "/" << endl;    
   cout << endl;
-  cout<<count1<<" "<<count2<<" "<<count3<<" "<<count4<<" "<<count5<<endl;
+  cout<<count1<<" "<<count2<<" "<<count3<<" "<<count4<<" "<<count5<<" "<<count6<<" "<<count7<<" "<<count8<<endl;
 
   //Draw
-  //gStyle->SetOptStat(0);
+  gStyle->SetOptStat(0);
   TCanvas *c0 = new TCanvas("1","1",1200,900);
   TAxis *xaxis = hist0->GetXaxis();
   TAxis *yaxis = hist0->GetYaxis();
@@ -411,6 +602,26 @@ void selectData(const TString conf="samples.conf", // input file
   legend->SetTextSize(0.02);
   legend->Draw();
   c4->Print("triobjfra.png");
+
+  TCanvas *c5 = new TCanvas("5","5",1200,900);
+  xaxis = hista->GetXaxis();
+  yaxis = hista->GetYaxis();
+
+  yaxis->SetTitle("#Delta R Sum");
+  xaxis->SetTitle("m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (GeV)");
+  yaxis->SetTitleOffset(1.2);
+  xaxis->SetTitleOffset(1.1);
+  //yaxis->SetRangeUser(0,1000);
+  c5->cd();
+
+  hista->SetLineColor(4);
+  hista->SetFillStyle(2);
+  hista->SetContour(100);
+  gStyle->SetPalette(104);
+
+  hista->Draw("colz");
+
+  c5->Print("deltaRSumvspt.png");
   
   gBenchmark->Show("selectData"); 
 }

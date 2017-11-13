@@ -26,7 +26,6 @@
 #include <TGraph.h>
 #include <TLegend.h>
 #include <TF1.h>
-#include "TH2D.h"
 #include "TH1D.h"
 #include "TRandom.h"
 #include "ConfParse.hh"             // input conf file parser
@@ -69,7 +68,7 @@ void selectGEN(const TString conf="samples.conf", // input file
   TH1F* R2 = new TH1F("DeltaR1","DeltaR",100,0,0.03);
   TH1F* R3 = new TH1F("DeltaR2","DeltaR",100,0,0.03);
 
-  TH1F* hist0 = new TH1F("tau -> 3 muon 0","RECO invariant mass",100,0,10);
+  TH1F* hist0 = new TH1F("tau -> 3 muon 0","RECO invariant mass",100,0,5);
   TH1F* hist1 = new TH1F("tau -> 3 muon 1","invariant mass",100,0,10);
   TH1F* hist2 = new TH1F("tau -> 3 muon 2","RECO pT",75,0,15);
   TH1F* hist3 = new TH1F("tau -> 3 muon 3","RECO Eta",50,-3,3);
@@ -90,7 +89,6 @@ void selectGEN(const TString conf="samples.conf", // input file
   TH1F* hist18 = new TH1F("tau -> 3 muon 18","Eta",50,-3,3);
   TH1F* hist19 = new TH1F("tau -> 3 muon 19","Phi",25,-3.5,3.5);
   TH1F* hist20 = new TH1F("tau -> 3 muon 20","GEN deltaR Sum",100,0,10);
-  TH2F* hista = new TH2F("tau -> 3 muon 21","#Delta R Sum vs m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (MC)",200,1.37682,2.17682,200,0,4);
   UInt_t count1=0, count2=0, count3=0, count4=0, count5=0, count6=0, lessmuon=0, lowpt = 0, multidecay = 0;
   gStyle->SetOptStat(111111);
 
@@ -125,13 +123,14 @@ void selectGEN(const TString conf="samples.conf", // input file
   gSystem->mkdir(ntupDir,kTRUE);
   
   // Declare output ntuple variables
+  /*
   UInt_t  runNum, lumiSec, evtNum;
   UInt_t  npv, npu;
   Float_t scale1fb, scale1fbUp, scale1fbDown, puWeight,puWeightUp,puWeightDown;
   Float_t met, metPhi, sumEt;
   Float_t tkMet, tkMetPhi, tkSumEt;
-  //Float_t mvaMet, mvaMetPhi, mvaSumEt, mvaMt, mvaU1, mvaU2;
-  //Float_t puppiMet, puppiMetPhi, puppiSumEt, puppiMt, puppiU1, puppiU2;
+  Float_t mvaMet, mvaMetPhi, mvaSumEt, mvaMt, mvaU1, mvaU2;
+  Float_t puppiMet, puppiMetPhi, puppiSumEt, puppiMt, puppiU1, puppiU2;
   Int_t   q[3];
   TLorentzVector *lep1=0, *lep2=0, *lep3=0;
   Int_t lepID[3];
@@ -141,8 +140,10 @@ void selectGEN(const TString conf="samples.conf", // input file
   Float_t d0[3], dz[3];
   Float_t muNchi2[3];
   UInt_t nPixHits[3], nTkLayers[3], nValidHits[3], nMatch[3], typeBits[3];
+  */
   UInt_t TolMuNum;
   UInt_t TolPassPreSel=0;
+  Float_t sysinvmass;
   
   
   // Data structures to store info from TTrees
@@ -167,6 +168,14 @@ void selectGEN(const TString conf="samples.conf", // input file
     // Assume signal sample is given name "dstau" -- flag to store GEN Ds kinematics
     Bool_t isSignal = (snamev[isam].CompareTo("dstau",TString::kIgnoreCase)==0);
     CSample* samp = samplev[isam];
+
+    //
+    // Set up output ntuple
+    TString outfilename = ntupDir + TString("/") + snamev[isam] + TString("_Tau3MuMCMatchedTrigger_select.root");
+    //if(isam!=0 && !doScaleCorr) outfilename = ntupDir + TString("/") + snamev[isam] + TString("_select.raw.root");
+    TFile *outFile = new TFile(outfilename,"RECREATE"); 
+    TTree *outTree = new TTree("Events","Events");
+    outTree->Branch("sysinvmass", &sysinvmass,"sysinvmass/F");
     
     cout<<"begin loop over files"<<endl;
     // loop through files
@@ -423,7 +432,6 @@ void selectGEN(const TString conf="samples.conf", // input file
 	Double_t deltaR1 = toolbox::deltaR(SelMuonArrG[3]->eta,SelMuonArrG[3]->phi,SelMuonArr[3]->eta,SelMuonArr[3]->phi);
 	Double_t deltaR2 = toolbox::deltaR(SelMuonArrG[4]->eta,SelMuonArrG[4]->phi,SelMuonArr[4]->eta,SelMuonArr[4]->phi);
 	Double_t deltaR3 = toolbox::deltaR(SelMuonArrG[5]->eta,SelMuonArrG[5]->phi,SelMuonArr[5]->eta,SelMuonArr[5]->phi);
-	Double_t deltaRSum = deltaR1+deltaR2+deltaR3;
 	if(deltaR1 < 0.014) passMatch++;
 	if(deltaR2 < 0.017) passMatch++;
 	if(deltaR3 < 0.025) passMatch++;
@@ -440,19 +448,22 @@ void selectGEN(const TString conf="samples.conf", // input file
 	  }
 	  Double_t invmass = (vtemp[0]+vtemp[1]+vtemp[2]).M();
 	  Double_t invmassG = (vtempG[0]+vtempG[1]+vtempG[2]).M();
-	  TLorentzVector vsum = (vtemp[0]+vtemp[1]+vtemp[2]);
-	  Double_t dR1 = toolbox::deltaR(SelMuonArrG[3]->eta,SelMuonArrG[3]->phi,vsum.Eta(),vsum.Phi());
-	  Double_t dR2 = toolbox::deltaR(SelMuonArrG[4]->eta,SelMuonArrG[4]->phi,vsum.Eta(),vsum.Phi());
-	  Double_t dR3 = toolbox::deltaR(SelMuonArrG[5]->eta,SelMuonArrG[5]->phi,vsum.Eta(),vsum.Phi());
-	  Double_t dRSum = dR1+dR2+dR3;
+
+	  
+	  if(fabs(SelMuonArr[3]->eta) > 2.4 ||
+	     fabs(SelMuonArr[4]->eta) > 2.4 ||
+	     fabs(SelMuonArr[5]->eta) > 2.4 ||
+	     SelMuonArr[3]->pt < 2.5 ||
+	     SelMuonArr[4]->pt < 2.5 ||
+	     SelMuonArr[5]->pt < 1) continue;
+	
 	  //if(invmassG > 1.77681 && invmassG < 1.77683){
-	  if (!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
+	  //if (!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
 	  hist0->Fill(invmass);//store events come from tau
 	  //if(deltaR1 < 0.03) hist2->Fill(SelMuonArrG[3]->pt); if(deltaR2 < 0.03) hist5->Fill(SelMuonArrG[4]->pt); if(deltaR3 < 0.03) hist8->Fill(SelMuonArrG[5]->pt);
 	  hist2->Fill(SelMuonArr[3]->pt); hist5->Fill(SelMuonArr[4]->pt); hist8->Fill(SelMuonArr[5]->pt);
 	  hist3->Fill(SelMuonArr[3]->eta); hist6->Fill(SelMuonArr[4]->eta); hist9->Fill(SelMuonArr[5]->eta);
-	  hist4->Fill(SelMuonArr[3]->phi); hist7->Fill(SelMuonArr[4]->phi); hist10->Fill(SelMuonArr[5]->phi);
-	  hista->Fill(invmass,dRSum);
+	  hist4->Fill(SelMuonArr[3]->phi); hist7->Fill(SelMuonArr[4]->phi); hist10->Fill(SelMuonArr[5]->phi);	      
 	  count6++;
 	  /*
 	    cout<<"GEN 1: pt: "<<SelMuonArrG[3]->pt<<" eta: "<<SelMuonArrG[3]->eta<<" phi: "<<SelMuonArrG[3]->phi<<" ID: "<<SelMuonArrG[3]->pdgId<<" parent: "<<SelMuonArrG[3]->parent<<" parent ID: "<<((baconhep::TGenParticle*)((*genPartArr)[(SelMuonArrG[3]->parent>-1 ? SelMuonArrG[3]->parent : 0)]))->pdgId<<endl;
@@ -470,14 +481,19 @@ void selectGEN(const TString conf="samples.conf", // input file
 	    cout<<"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"<<endl;
 	    cout<<endl;
 	  */
-	}
-	
+	  //Fill tree
+	  sysinvmass = invmass;
+	  //if(sysinvmass > 1.67682 && sysinvmass < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass
+	  outTree->Fill();
+	}	
       }//end of event loop
       cout<<"There is "<<passpresel<<" events passed pre selection"<<endl;
       TolPassPreSel+=passpresel;
       delete infile;
       infile=0, eventTree=0;    
     }
+    outFile->Write();
+    outFile->Close(); 
   }
   delete h_rw;
   delete h_rw_up;
@@ -506,25 +522,27 @@ void selectGEN(const TString conf="samples.conf", // input file
 
   //Draw Graph
   //THStack *all = new THStack("tau -> 3 muons","invariant mass");
+  gStyle->SetOptStat(0);
   TCanvas *c0 = new TCanvas("c0","invariant mass",1200,900);
   TAxis *xaxis = hist0->GetXaxis();
   TAxis *yaxis = hist0->GetYaxis();
 
   xaxis->SetTitle("Invariant mass (GeV)");
-  yaxis->SetTitle("Entries / 0.1 GeV");
+  yaxis->SetTitle("Entries / 50 MeV");
   yaxis->SetTitleOffset(1.2);
-  yaxis->SetRangeUser(0.5,100000);
+  yaxis->SetRangeUser(0,1300);
   c0->cd();
   
 
-  hist0->SetFillColor(5);
+  hist0->SetFillColor(1);
   hist0->SetFillStyle(0);
+  hist0->SetMarkerStyle(20);
   //hist1->SetFillColor(7);
   //hist3->SetFillColor(7);
   //hist4->SetFillColor(8);
 
 
-  hist0->Draw();
+  hist0->Draw("E");
   //hist1->Draw("SAME");
   
   // all->Add(hist1);
@@ -532,7 +550,7 @@ void selectGEN(const TString conf="samples.conf", // input file
   //all->Add(hist3);
   //all->Add(hist4);
   //c0->cd();
-  c0->SetLogy();
+  //c0->SetLogy();
   /*
     all->Draw();
     TAxis *xaxis = all->GetXaxis();
@@ -545,9 +563,9 @@ void selectGEN(const TString conf="samples.conf", // input file
   */
   TF1 *f1 = new TF1("m1","gaus",1.5,2);
   TF1 *f2 = new TF1("m2","gaus",0,5);
-  TF1 *total = new TF1("mstotal","gaus(0)+gaus(3)",0,5);
-  Double_t par[6]={50,1.5,0.1,5,2.5,2};
-  hist0->Fit(f1,"R0");
+  TF1 *total = new TF1("mstotal","gaus(0)+gaus(3)",1.6,2);
+  Double_t par[6]={50,1.75,0.015,5,1.75,0.2};
+  //hist0->Fit(f1,"R0");
   //hist2->Fit(f2,"R0+");
   //f1->GetParameters(&par[0]);
   //f2->GetParameters(&par[3]);
@@ -559,7 +577,7 @@ void selectGEN(const TString conf="samples.conf", // input file
   //f1->SetLineColor(3);
   //f1->Draw("SAME");
 
-  auto legend = new TLegend(0.5,0.7,0.7,0.8);
+  auto legend = new TLegend(0.65,0.7,0.85,0.74);
   //legend->AddEntry(hist1,"3 muons with opposite signs","f");
   legend->AddEntry(hist0,"2 global + 1 tracker muons","f");
   legend->Draw();
@@ -752,27 +770,6 @@ void selectGEN(const TString conf="samples.conf", // input file
   //hist19->Draw("SAME");
 
   c5->Print("num.png");
-
-  gStyle->SetOptStat(0);
-  TCanvas *c11 = new TCanvas("11","cos vs pt",1200,900);
-  xaxis = hista->GetXaxis();
-  yaxis = hista->GetYaxis();
-
-  yaxis->SetTitle("#Delta R Sum");
-  xaxis->SetTitle("m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (GeV)");
-  yaxis->SetTitleOffset(1.2);
-  xaxis->SetTitleOffset(1.1);
-  //yaxis->SetRangeUser(0,1000);
-  c11->cd();
-
-  hista->SetLineColor(4);
-  hista->SetFillStyle(2);
-  hista->SetContour(100);
-  gStyle->SetPalette(104);
-
-  hista->Draw("colz");
-
-  c11->Print("deltaRSumvspt.png");
 
   gBenchmark->Show("select3Mu");
 

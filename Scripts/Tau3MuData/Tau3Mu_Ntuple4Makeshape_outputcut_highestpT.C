@@ -1,0 +1,443 @@
+//================================================================================================
+//
+// Select Z->mumu candidates
+//
+//  * outputs ROOT files of events passing selection
+//
+//________________________________________________________________________________________________
+#if !defined(__CINT__) || defined(__MAKECINT__)
+#include <TROOT.h>                  // access to gROOT, entry point to ROOT system
+#include <TSystem.h>                // interface to OS
+#include <TFile.h>                  // file handle class
+#include <TTree.h>                  // class to access ntuples
+#include <TClonesArray.h>           // ROOT array class
+#include <TBenchmark.h>             // class to track macro running statistics
+#include <TVector2.h>               // 2D vector class
+#include <TMath.h>                  // ROOT math library
+#include <vector>                   // STL vector class
+#include <iostream>                 // standard I/O
+#include <iomanip>                  // functions to format standard I/O
+#include <fstream>                  // functions for file I/O
+#include "TLorentzVector.h"         // 4-vector class
+#include <THStack.h>
+#include <TStyle.h>
+#include <TCanvas.h>
+#include <TGraph.h>
+#include <TLegend.h>
+#include <TVector3.h>
+#include <TF1.h>
+#include "TH1D.h"
+#include "TRandom.h"
+#include "ConfParse.hh"             // input conf file parser
+#include "../Utils/CSample.hh"      // helper class to handle samples
+// define structures to read in ntuple
+#include "BaconAna/DataFormats/interface/BaconAnaDefs.hh"
+#include "BaconAna/DataFormats/interface/TEventInfo.hh"
+#include "BaconAna/DataFormats/interface/TGenEventInfo.hh"
+#include "BaconAna/DataFormats/interface/TGenParticle.hh"
+#include "BaconAna/DataFormats/interface/TMuon.hh"
+#include "BaconAna/DataFormats/interface/TVertex.hh"
+#include "BaconAna/Utils/interface/TTrigger.hh"
+// lumi section selection with JSON files
+#include "BaconAna/Utils/interface/RunLumiRangeMap.hh"
+#include "../Utils/LeptonIDCuts.hh" // helper functions for lepton ID selection
+#include "../Utils/MyTools.hh"      // various helper functions
+#endif
+
+//=== MAIN MACRO ================================================================================================= 
+
+void selectData(const TString conf="samples.conf", // input file
+               const TString outputDir=".",   // output directory
+	       const Bool_t  doScaleCorr=0,    // apply energy scale corrections
+	       const Bool_t  doPU=0
+	       ) {
+  gBenchmark->Start("selectData");
+
+  //--------------------------------------------------------------------------------------------------------------
+  // Settings 
+  //============================================================================================================== 
+
+  const Double_t MASS_LOW  = 40;
+  const Double_t MASS_HIGH = 200;
+  const Double_t PT_CUT    = 22;
+  const Double_t ETA_CUT   = 2.4;
+  const Double_t MUON_MASS = 0.105658369;
+  const Int_t LEPTON_ID = 13;
+  gStyle->SetOptStat(111111);
+  // load trigger menu                                                                                                  
+  const baconhep::TTrigger triggerMenu("../../BaconAna/DataFormats/data/HLT_50nsGRun");
+
+  //Initialize histograms
+  TH1F* TriMuFra = new TH1F("TriMuFra","Fraction of trigger object",51,0,1.02);
+  TH1F* NumGlobal = new TH1F("NUM","Number of global muon",10,0,10);
+  TH1F* hist0 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 0","m_{#mu^{+}#mu^{-}} (Data)",100,0,5);
+  TH1F* hist1 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 1","pT",100,0,20);
+  TH1F* hist2 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 2","#mu^{-} pT",100,0,20);
+  TH1F* hist3 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 3","pT",100,0,20);
+  TH1F* hist4 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 4","#eta",100,-5,5);
+  TH1F* hist5 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 5","#mu^{-} #eta",100,-5,5);
+  TH1F* hist6 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 6","#pi^{-} #eta",100,-5,5);
+  TH1F* hist7 = new TH1F("#tau^{#mp} -> #mu^{#mp} #mu^{#pm} #mu^{#mp} 7","m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (Data)",200,0,10);
+  Int_t count1=0, count2=0, count3=0, count4=0, count5=0, count6=0, count7=0, count8=0, count9=0; 
+
+  //--------------------------------------------------------------------------------------------------------------
+  // Main analysis code 
+  //==============================================================================================================
+  
+  vector<TString>  snamev;      // sample name (for output files)  
+  vector<CSample*> samplev;     // data/MC samples
+
+  //
+  // parse .conf file
+  //
+  confParse(conf, snamev, samplev);
+  const Bool_t hasData = (samplev[0]->fnamev.size()>0);
+
+  // Create output directory
+  gSystem->mkdir(outputDir,kTRUE);
+  const TString ntupDir = outputDir + TString("/ntuples");
+  gSystem->mkdir(ntupDir,kTRUE);
+  
+  //
+  // Declare output ntuple variables
+  //TLorentzVector *v1=0, *v2=0, *v3=0;
+  Float_t sysinvmass;
+  
+  // Data structures to store info from TTrees
+  baconhep::TEventInfo *info   = new baconhep::TEventInfo();
+  //baconhep::TGenEventInfo *gen = new baconhep::TGenEventInfo();
+  //TClonesArray *genPartArr = new TClonesArray("baconhep::TGenParticle");
+  TClonesArray *muonArr    = new TClonesArray("baconhep::TMuon");
+  TClonesArray *vertexArr  = new TClonesArray("baconhep::TVertex"); 
+  TFile *infile=0;
+  TTree *eventTree=0;
+
+    
+  //
+  // loop over samples
+  //  
+  for(UInt_t isam=0; isam<samplev.size(); isam++) {
+    // Assume data sample is first sample in .conf file
+    // If sample is empty (i.e. contains no ntuple files), skip to next sample
+    //>>>>>>>>>>>>>>>>>>>>>
+    
+    CSample* samp = samplev[isam];
+    
+    //
+    // Set up output ntuple
+    TString outfilename = ntupDir + TString("/") + snamev[isam] + TString("_Tau3Mu_select.root");
+    //if(isam!=0 && !doScaleCorr) outfilename = ntupDir + TString("/") + snamev[isam] + TString("_select.raw.root");
+    TFile *outFile = new TFile(outfilename,"RECREATE"); 
+    TTree *outTree = new TTree("Events","Events");
+    outTree->Branch("sysinvmass", &sysinvmass,"sysinvmass/F");
+    //outTree->Branch("v1","TLorentzVector", &v1);
+    //outTree->Branch("v2","TLorentzVector", &v2);
+    //outTree->Branch("v3","TLorentzVector", &v3);
+    //>>>>>>>>>>>>>>>>>>>>>
+    
+    //
+    // loop through files
+    //
+    const UInt_t nfiles = samp->fnamev.size();
+    for(UInt_t ifile=0; ifile<nfiles; ifile++) {  
+      
+      // Read input file and get the TTrees
+      cout << "Processing " << samp->fnamev[ifile] << " [xsec = " << samp->xsecv[ifile] << " pb] ... "; cout.flush();
+      infile = TFile::Open(samp->fnamev[ifile]); 
+      assert(infile);
+      if (samp->fnamev[ifile] == "/dev/null") 
+	{
+	  cout <<"-> Ignoring null input "<<endl; 
+	  continue;
+	}
+
+
+      Bool_t hasJSON = kFALSE;
+      baconhep::RunLumiRangeMap rlrm;
+      if(samp->jsonv[ifile].CompareTo("NONE")!=0) { 
+        hasJSON = kTRUE;
+	rlrm.addJSONFile(samp->jsonv[ifile].Data()); 
+      }
+  
+      eventTree = (TTree*)infile->Get("Events"); assert(eventTree);  
+      eventTree->SetBranchAddress("Info", &info);      TBranch *infoBr = eventTree->GetBranch("Info");
+      eventTree->SetBranchAddress("Muon", &muonArr);   TBranch *muonBr = eventTree->GetBranch("Muon");
+      eventTree->SetBranchAddress("Vertex",   &vertexArr); TBranch *vertexBr = eventTree->GetBranch("Vertex");
+
+      //GEN handle
+      //>>>>>>>>>>>>>>>>>>>>>>>>
+   
+      //
+      // loop over events
+      //
+      Double_t nsel=0, nselvar=0;
+      for(UInt_t ientry=0; ientry<eventTree->GetEntries(); ientry++) {
+      //for(UInt_t ientry=0; ientry<10000; ientry++) {
+        infoBr->GetEntry(ientry);
+	count1++;
+
+	if(ientry%5000==0) cout << "Processing event " << ientry << ". " << (double)ientry/(double)eventTree->GetEntries()*100 << " percent done with this file." << endl;
+
+	//weight staff
+	//>>>>>>>>>>>>>>>>>>>>>
+     
+        // check for certified lumi (if applicable)
+        baconhep::RunLumiRangeMap::RunLumiPairType rl(info->runNum, info->lumiSec);      
+        if(hasJSON && !rlrm.hasRunLumi(rl)) continue;
+	count2++;
+
+        // trigger requirement               
+        if(!isMuonTrigger(triggerMenu, info->triggerBits)) continue;
+	count3++;
+
+        // good vertex requirement
+        if(!(info->hasGoodPV)) continue;
+	count4++;
+	
+	//Select muon
+	muonArr->Clear();
+        muonBr->GetEntry(ientry);
+	vector<baconhep::TMuon*> trackermu;
+	vector<baconhep::TMuon*> trackerantimu;
+	//vector<baconhep::TMuon*> globalmu;	
+	for(int j=0; j<muonArr->GetEntries(); j++){
+	  baconhep::TMuon* muon = (baconhep::TMuon*)(*muonArr)[j];
+	  if(!isMuonTriggerObj(triggerMenu, muon->hltMatchBits, kFALSE)) continue;
+	  if(muon->typeBits & baconhep::EMuType::kTracker && muon->q == -1) trackermu.push_back(muon);
+	  if(muon->typeBits & baconhep::EMuType::kTracker && muon->q == 1) trackerantimu.push_back(muon);
+	  //if(muon->typeBits & baconhep::EMuType::kGlobal) globalmu.push_back(muon);
+	}
+	if(trackermu.size()<1 || trackerantimu.size()<1 || trackermu.size()+trackerantimu.size()<3) continue;
+	count5++;
+
+	//select triplet
+	baconhep::TMuon* mu[6] = {NULL,NULL,NULL,NULL,NULL,NULL};
+	baconhep::TMuon* mutemp1[2] = {NULL,NULL};
+	baconhep::TMuon* mutemp2[2] = {NULL,NULL};
+	TLorentzVector vmu[3];
+	TLorentzVector vtemp1, vtemp2, vtemp3;
+	Double_t mumaxpt=0, musubpt = 0;
+	Double_t antimumaxpt=0, antimusubpt=0;
+	//select maxpt mu
+	for(int i=0; i<trackermu.size(); i++){
+	  if(trackermu[i]->pt >= mumaxpt){
+	    musubpt = mumaxpt;
+	    mumaxpt = trackermu[i]->pt;
+	    mutemp1[1] = mutemp1[0];
+	    mutemp1[0] = trackermu[i];
+	  }
+	  else if(trackermu[i]->pt >= musubpt){
+	    musubpt = trackermu[i]->pt;
+	    mutemp1[1] =trackermu[i];
+	  }
+	}
+	//select maxpt antimu
+	for(int i=0; i<trackerantimu.size(); i++){
+	  if(trackerantimu[i]->pt >= antimumaxpt){
+	    antimusubpt = antimumaxpt;
+	    antimumaxpt = trackerantimu[i]->pt;
+	    mutemp2[1] = mutemp2[0];
+	    mutemp2[0] = trackerantimu[i];
+	  }
+	  else if(trackerantimu[i]->pt >= antimusubpt){
+	    antimusubpt = trackerantimu[i]->pt;
+	    mutemp2[1] =trackerantimu[i];
+	  }
+	}
+	mu[0] = mutemp1[0];
+	mu[1] = mutemp2[0];
+	if(trackermu.size()>1 && trackerantimu.size()>1){
+	  if(mutemp1[1]->pt >= mutemp2[1]->pt)
+	    mu[2] = mutemp1[1];
+	  else
+	    mu[2] = mutemp2[1];
+	}
+	else if(trackermu.size()<2)
+	  mu[2]=mutemp2[1];
+	else if(trackerantimu.size()<2)
+	  mu[2]=mutemp1[1];
+
+	//Sort
+	Double_t maxpt = 0, submaxpt = 0;
+	for(Int_t i=0; i<3; i++){
+	  if(mu[i]->pt >= maxpt){
+	    submaxpt = maxpt;
+	    maxpt = mu[i]->pt;
+	    mu[5]=mu[4];
+	    mu[4]=mu[3];
+	    mu[3]=mu[i];
+	  }
+	  else if(mu[i]->pt >= submaxpt){
+	    submaxpt = mu[i]->pt;
+	    mu[5] = mu[4];
+	    mu[4] = mu[i];
+	  }
+	  else{
+	    mu[5] = mu[i];
+	  }
+	}
+	vmu[0].SetPtEtaPhiM(mu[3]->pt, mu[3]->eta, mu[3]->phi, MUON_MASS);
+	vmu[1].SetPtEtaPhiM(mu[4]->pt, mu[4]->eta, mu[4]->phi, MUON_MASS);
+	vmu[2].SetPtEtaPhiM(mu[5]->pt, mu[5]->eta, mu[5]->phi, MUON_MASS);
+	if((vmu[0]+vmu[1]+vmu[2]).M() > 1.67682 && (vmu[0]+vmu[1]+vmu[2]).M() < 1.87682) continue; //Exclude signal region 5 sigma -- 100MeV around tau mass	
+
+	if(fabs(mu[3]->eta) > 2.4 ||
+	   fabs(mu[4]->eta) > 2.4 ||
+	   fabs(mu[5]->eta) > 2.4 ||
+	   mu[3]->pt < 2.5 ||
+	   mu[4]->pt < 2.5 ||
+	   mu[5]->pt < 1) continue;
+	count6++;
+
+	hist0->Fill((vmu[0]+vmu[1]).M());
+	hist7->Fill((vmu[0]+vmu[1]+vmu[2]).M());
+	hist1->Fill(mu[3]->pt);
+	hist2->Fill(mu[4]->pt);
+	hist3->Fill(mu[5]->pt);
+	hist4->Fill(mu[3]->eta);
+	hist5->Fill(mu[4]->eta);
+	hist6->Fill(mu[5]->eta);
+
+	//Fill tree
+	sysinvmass = (vmu[0]+vmu[1]+vmu[2]).M();
+	//*v1 = vmu1;
+	//*v2 = vmu2;
+	//*v3 = vtrk1;
+	outTree->Fill();
+	
+      }//end of event loop
+      delete infile;
+      infile=0, eventTree=0;    
+    }
+    outFile->Write();
+    outFile->Close(); 
+  }
+  delete info;
+  delete muonArr;
+  delete vertexArr;
+    
+  //--------------------------------------------------------------------------------------------------------------
+  // Output
+  //==============================================================================================================
+   
+  cout << "*" << endl;
+  cout << "* SUMMARY" << endl;
+  cout << "*--------------------------------------------------" << endl;
+  cout << " Z -> mu mu" << endl;
+  cout << "  Mass window: [" << MASS_LOW << ", " << MASS_HIGH << "]" << endl;
+  cout << "  pT > " << PT_CUT << endl;
+  cout << "  |eta| < " << ETA_CUT << endl;
+  cout << endl;
+  
+  cout << endl;
+  cout << "  <> Output saved in " << outputDir << "/" << endl;    
+  cout << endl;
+  cout<<count1<<" "<<count2<<" "<<count3<<" "<<count4<<" "<<count5<<" "<<count6<<endl;
+
+  //Draw
+  //gStyle->SetOptStat(0);
+  TCanvas *c0 = new TCanvas("1","1",1200,900);
+  TAxis *xaxis = hist0->GetXaxis();
+  TAxis *yaxis = hist0->GetYaxis();
+  xaxis->SetTitle("m_{#mu^{+}#mu^{-}} (GeV)");
+  yaxis->SetTitle("Entries / 50 MeV");
+  yaxis->SetTitleOffset(1.2);
+  yaxis->SetRangeUser(0.5,50000);
+  //c0->SetLogx();
+  c0->SetLogy();
+  c0->cd();
+  hist0->SetFillColor(38);
+  hist0->Draw();
+  auto legend = new TLegend(0.50,0.76,0.65,0.8);
+  //legend->AddEntry(hist1,"3 muons with opposite signs","f");
+  legend->AddEntry(hist0,"#mu^{+}#mu^{-}","f");
+  legend->Draw();
+  c0->Print("invmassdimu.png");
+
+  TCanvas *c1 = new TCanvas("2","2",1200,900);
+  xaxis = hist3->GetXaxis();
+  yaxis = hist3->GetYaxis();
+  xaxis->SetTitle("pT (GeV)");
+  yaxis->SetTitle("Entries / 0.2 GeV");
+  yaxis->SetTitleOffset(1.2);
+  c1->cd();
+  c1->SetLogy();
+  hist1->SetLineColor(2);
+  hist2->SetLineColor(4);
+  hist3->SetLineColor(6);
+  hist1->SetFillStyle(0);
+  hist2->SetFillStyle(0);
+  hist3->SetFillStyle(0);
+  hist3->Draw();
+  hist1->Draw("same");
+  hist2->Draw("same");
+  legend = new TLegend(0.50,0.72,0.6,0.8);
+  //legend->AddEntry(hist1,"3 muons with opposite signs","f");
+  legend->AddEntry(hist1,"#mu lead","f");
+  legend->AddEntry(hist2,"#mu sublead","f");
+  legend->AddEntry(hist3,"#mu third","f");
+  legend->Draw();
+  c1->Print("pt.png");
+
+  TCanvas *c2 = new TCanvas("3","3",1200,900);
+  xaxis = hist4->GetXaxis();
+  yaxis = hist4->GetYaxis();
+  xaxis->SetTitle("#eta");
+  yaxis->SetTitle("Entries / 0.1");
+  yaxis->SetTitleOffset(1.2);
+  c2->cd();
+  c2->SetLogy();
+  hist4->SetLineColor(2);
+  hist5->SetLineColor(4);
+  hist6->SetLineColor(6);
+  hist4->SetFillStyle(0);
+  hist5->SetFillStyle(0);
+  hist6->SetFillStyle(0);
+  hist4->Draw();
+  hist5->Draw("same");
+  hist6->Draw("same");
+  legend = new TLegend(0.45,0.50,0.55,0.62);
+  //legend->AddEntry(hist1,"3 muons with opposite signs","f");
+  legend->AddEntry(hist4,"#mu lead","f");
+  legend->AddEntry(hist5,"#mu sublead","f");
+  legend->AddEntry(hist6,"#mu third","f");
+  legend->Draw();
+  c2->Print("eta.png");
+
+  TCanvas *c3 = new TCanvas("4","4",1200,900);
+  xaxis = hist7->GetXaxis();
+  yaxis = hist7->GetYaxis();
+  xaxis->SetTitle("m_{#mu^{#mp}#mu^{#pm}#mu^{#mp}} (GeV)");
+  yaxis->SetTitle("Entries / 50 MeV");
+  yaxis->SetTitleOffset(1.2);
+  yaxis->SetRangeUser(0.5,50000);
+  //c0->SetLogx();
+  c3->SetLogy();
+  c3->cd();
+  hist7->SetFillColor(38);
+  hist7->Draw();
+  legend = new TLegend(0.50,0.76,0.65,0.8);
+  //legend->AddEntry(hist1,"3 muons with opposite signs","f");
+  legend->AddEntry(hist7,"#mu^{#mp}#mu^{#pm}#mu^{#mp}","f");
+  legend->Draw();
+  c3->Print("invmassmutrk.png");
+
+  TCanvas *c4 = new TCanvas("5","5",1200,900);
+  xaxis = TriMuFra->GetXaxis();
+  yaxis = TriMuFra->GetYaxis();
+  xaxis->SetTitle("Fraction of trigger object");
+  yaxis->SetTitle("Entries");
+  yaxis->SetTitleOffset(1.4);
+  //yaxis->SetRangeUser(0.5,50000);
+  //c0->SetLogx();
+  //c4->SetLogy();
+  c4->cd();
+  TriMuFra->Draw();
+  legend = new TLegend(0.11,0.81,0.47,0.87);
+  legend->AddEntry(TriMuFra,"hltL2fL1sL1DoubleMuorTripleMuL1f0L2PreFiltered0","f");
+  legend->SetTextSize(0.02);
+  legend->Draw();
+  c4->Print("triobjfra.png");
+  
+  gBenchmark->Show("selectData"); 
+}
